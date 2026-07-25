@@ -7,17 +7,20 @@ import {
   HERO,
   ITEM_GLYPHS,
   STAIRS,
+  clearGlyphCache,
   drawGlyph,
   glyphFor,
 } from './glyphs';
 import {
   blobPath,
+  brushStroke,
   clamp01,
   easeOutCubic,
   easeOutQuint,
   hash3,
   inkStroke,
   lerp,
+  volutePath,
   type Pt,
 } from './ink';
 import { THEMES, type Theme, type ThemeName } from './theme';
@@ -196,7 +199,9 @@ export interface Geometry {
 }
 
 export function geometry(size: number): Geometry {
-  const pad = size * 0.058;
+  // Wider than a plain ruled page needs, because the illuminated band and its
+  // corner flourishes live in this margin.
+  const pad = size * 0.078;
   return { size, pad, cell: (size - pad * 2) / SIZE };
 }
 
@@ -361,17 +366,151 @@ function makePaper(
     },
   );
 
-  // The depth, written in the margin.
+  illuminate(ctx, g, theme, seed, x0, y0, x1, y1);
+
+  // The depth, rubricated — a scribe's red numeral in the margin.
   ctx.save();
-  ctx.globalAlpha = 0.36;
-  ctx.fillStyle = theme.ink;
-  ctx.font = `italic 600 ${Math.round(g.pad * 0.62)}px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`;
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = theme.blood;
+  ctx.font = `700 ${Math.round(g.pad * 0.5)}px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(`${depth}`, x0 + 2, y0 - g.pad * 0.28);
+  ctx.fillText(roman(depth), x0 + g.cell * 0.02, y0 - g.pad * 0.34);
   ctx.restore();
 
   return c;
+}
+
+/** Depth as a scribe would set it. Falls back to arabic past what reads cleanly. */
+function roman(n: number): string {
+  if (n <= 0 || n > 3999) return String(n);
+  const table: [number, string][] = [
+    [1000, 'M'],
+    [900, 'CM'],
+    [500, 'D'],
+    [400, 'CD'],
+    [100, 'C'],
+    [90, 'XC'],
+    [50, 'L'],
+    [40, 'XL'],
+    [10, 'X'],
+    [9, 'IX'],
+    [5, 'V'],
+    [4, 'IV'],
+    [1, 'I'],
+  ];
+  let out = '';
+  let v = n;
+  for (const [val, sym] of table) {
+    while (v >= val) {
+      out += sym;
+      v -= val;
+    }
+  }
+  return out;
+}
+
+/**
+ * The illuminated band.
+ *
+ * Gilding, a vine of leaves, and a brush flourish curling into each corner. All
+ * of it lives in the margin OUTSIDE the play area — decoration that competes
+ * with the board for attention is decoration that makes the game worse, and this
+ * board has to stay readable a turn ahead.
+ */
+function illuminate(
+  ctx: CanvasRenderingContext2D,
+  g: Geometry,
+  theme: Theme,
+  seed: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): void {
+  const m = g.pad * 0.4;
+  const bx0 = x0 - m;
+  const by0 = y0 - m;
+  const bx1 = x1 + m;
+  const by1 = y1 + m;
+
+  // Two-tone rule: a bright face over a shadowed one reads as metal rather than
+  // as a yellow line.
+  ctx.save();
+  ctx.globalAlpha = 0.6;
+  ctx.strokeStyle = theme.leafDeep;
+  ctx.lineWidth = g.cell * 0.042;
+  ctx.strokeRect(bx0, by0, bx1 - bx0, by1 - by0);
+  ctx.globalAlpha = 0.7;
+  ctx.strokeStyle = theme.leaf;
+  ctx.lineWidth = g.cell * 0.022;
+  ctx.strokeRect(bx0 - 1, by0 - 1, bx1 - bx0, by1 - by0);
+  ctx.restore();
+
+  // The vine: leaves growing off the band, each a short tapered brush mark angled
+  // outward. Round beads read as a string of pearls on a wire; a tapered stroke
+  // reads as foliage.
+  const per = 8;
+  const edges: [number, number, number, number, number, number][] = [
+    [bx0, by0, bx1, by0, 0, -1],
+    [bx1, by0, bx1, by1, 1, 0],
+    [bx1, by1, bx0, by1, 0, 1],
+    [bx0, by1, bx0, by0, -1, 0],
+  ];
+  edges.forEach(([ax, ay, bx, by, nx, ny], e) => {
+    for (let i = 1; i < per; i++) {
+      const t = i / per;
+      const px = ax + (bx - ax) * t;
+      const py = ay + (by - ay) * t;
+      const h = hash3(seed + e * 31, i, 0);
+      const len = g.cell * (0.07 + h * 0.05);
+      // Alternate which side of the band each leaf grows from.
+      const s = i % 2 === 0 ? 1 : -1;
+      const lean = (h - 0.5) * 0.9;
+      const tip: Pt = [
+        px + nx * len * s + -ny * len * lean,
+        py + ny * len * s + nx * len * lean,
+      ];
+      brushStroke(ctx, [[px, py], tip], {
+        color: i % 3 === 0 ? theme.blood : h > 0.5 ? theme.leaf : theme.leafDeep,
+        width: g.cell * (0.038 + h * 0.018),
+        seed: seed + e * 131 + i * 17,
+        amp: g.cell * 0.006,
+        alpha: 0.4 + h * 0.32,
+        dryness: 0.5,
+      });
+    }
+  });
+
+  // A scrolled volute out of each corner, doubled: a heavy shadowed arm and a
+  // brighter one curling the other way.
+  const corners: [number, number, number][] = [
+    [bx0, by0, Math.PI * 1.25],
+    [bx1, by0, Math.PI * 1.75],
+    [bx1, by1, Math.PI * 0.25],
+    [bx0, by1, Math.PI * 0.75],
+  ];
+  corners.forEach(([cx, cy, a], i) => {
+    // Sized against the margin actually available (band corner to page edge),
+    // not against the cell — a longer flourish is guaranteed to clip.
+    const reach = Math.min(g.cell * 0.34, g.pad * 0.52);
+    brushStroke(ctx, volutePath(cx, cy, reach, a, 1, 4.2, 30), {
+      color: theme.leafDeep,
+      width: g.cell * 0.055,
+      seed: seed + 700 + i * 97,
+      amp: g.cell * 0.007,
+      alpha: 0.65,
+      dryness: 0.6,
+    });
+    brushStroke(ctx, volutePath(cx, cy, reach * 0.62, a + 0.55, -1, 3.4, 24), {
+      color: theme.leaf,
+      width: g.cell * 0.036,
+      seed: seed + 900 + i * 53,
+      amp: g.cell * 0.005,
+      alpha: 0.7,
+      dryness: 0.7,
+    });
+  });
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -399,6 +538,11 @@ export class Renderer {
 
   invalidatePaper(): void {
     this.paperKey = '';
+  }
+
+  /** Called on theme change: cached glyphs are tinted, so they must be redrawn. */
+  invalidateGlyphs(): void {
+    clearGlyphCache();
   }
 
   draw(state: GameState, anim: TurnAnim, clock: number, wallClock: number): void {
@@ -455,6 +599,9 @@ export class Renderer {
 
     this.effects.drawRings(ctx);
     this.effects.drawDrops(ctx);
+    // Over the actors: the flourish is the stroke you just made, so it sits on
+    // top of the thing it was made at.
+    this.effects.drawFlourishes(ctx);
     this.effects.drawTexts(ctx);
 
     ctx.restore();
@@ -521,11 +668,12 @@ export class Renderer {
       ctx.stroke();
       ctx.restore();
       drawGlyph(ctx, STAIRS, cx, cy, {
-        color: theme.gold,
+        color: theme.leaf,
         size: g.cell * 0.62,
         seed: 5501,
         boil,
         alpha: 0.95,
+        brush: true,
       });
     } else {
       // Sealed: the way down is visible from the moment you arrive, so the floor
@@ -589,10 +737,11 @@ export class Renderer {
       ctx.fill();
       ctx.restore();
       drawGlyph(ctx, ITEM_GLYPHS[it.kind], cx, cy + bob, {
-        color: this.theme.gold,
+        color: this.theme.leaf,
         size: g.cell * 0.46,
         seed: it.seed,
         boil,
+        brush: true,
       });
     }
   }
@@ -719,9 +868,11 @@ export class Renderer {
 
       drawGlyph(ctx, glyphFor(e.kind), cx, cy, {
         color: this.theme.ink,
-        size: g.cell * 0.56 * coiled,
+        size: g.cell * 0.56,
+        scale: coiled,
         seed: e.seed,
         boil,
+        brush: true,
       });
 
       // Braced: its stance is set and a stroke will not break it this turn. Drawn
@@ -801,10 +952,12 @@ export class Renderer {
 
     drawGlyph(ctx, HERO, cx, cy, {
       color: theme.ink,
-      size: g.cell * 0.58 * scale,
+      size: g.cell * 0.58,
+      scale,
       seed: 101,
       boil,
       rotation: FACING_ROTATION[s.player.facing] ?? 0,
+      brush: true,
     });
 
     if (s.player.exposed) {

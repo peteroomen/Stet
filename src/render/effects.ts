@@ -1,4 +1,14 @@
-import { blobPath, clamp01, easeOutCubic, hash3, inkSplat } from './ink';
+import {
+  blobPath,
+  brushStroke,
+  clamp01,
+  easeOutCubic,
+  easeOutQuint,
+  hash3,
+  inkSplat,
+  swashPath,
+  type Pt,
+} from './ink';
 
 /**
  * Splatter, floating numbers, screenshake and hitstop.
@@ -35,6 +45,24 @@ export interface FloatText {
   weight: number;
 }
 
+/**
+ * A calligraphic flourish — the arc of the brush itself.
+ *
+ * Painted on over its first third rather than appearing whole, because a mark
+ * that materialises is a shape and a mark that draws itself is a brush. The tail
+ * then dries: the stroke holds, loses its wet edge, and fades.
+ */
+export interface Flourish {
+  pts: Pt[];
+  width: number;
+  color: string;
+  life: number;
+  maxLife: number;
+  seed: number;
+  /** Fraction of the life spent painting the stroke on. */
+  drawFor: number;
+}
+
 export interface Ring {
   x: number;
   y: number;
@@ -51,6 +79,7 @@ export class Effects {
   drops: Drop[] = [];
   texts: FloatText[] = [];
   rings: Ring[] = [];
+  flourishes: Flourish[] = [];
 
   /** Screenshake, in board pixels, decaying exponentially. */
   shake = 0;
@@ -167,6 +196,44 @@ export class Effects {
     });
   }
 
+  /**
+   * The slash of a strike: a swash cutting through the target tile, thrown along
+   * `angle`. `power` scales its reach and weight.
+   */
+  slash(x: number, y: number, angle: number, power: number, color: string, scale: number): void {
+    const seed = (Math.random() * 1e6) | 0;
+    const sweep = (0.9 + power * 0.5) * (hash3(seed, 1, 0) > 0.5 ? 1 : -1);
+    // swashPath peaks near 1.2x the radius handed to it, so this is sized to
+    // stay inside the tile it belongs to rather than sweeping across the board.
+    this.flourishes.push({
+      pts: swashPath(x, y, scale * (0.24 + power * 0.13), angle - sweep / 2, sweep, 0.2, 20),
+      width: scale * (0.085 + power * 0.075),
+      color,
+      life: 0,
+      maxLife: 340 + power * 90,
+      seed,
+      drawFor: 0.28,
+    });
+  }
+
+  /**
+   * A bigger, slower swash with a curl — reserved for a kill, so the biggest
+   * moment in a turn gets a mark you could not mistake for a hit.
+   */
+  swash(x: number, y: number, angle: number, color: string, scale: number): void {
+    const seed = (Math.random() * 1e6) | 0;
+    const dir = hash3(seed, 3, 0) > 0.5 ? 1 : -1;
+    this.flourishes.push({
+      pts: swashPath(x, y, scale * 0.44, angle - dir * 0.5, dir * 2.6, 0.45, 28),
+      width: scale * 0.14,
+      color,
+      life: 0,
+      maxLife: 620,
+      seed,
+      drawFor: 0.4,
+    });
+  }
+
   ring(x: number, y: number, r0: number, r1: number, color: string, width: number, ms = 420): void {
     this.rings.push({
       x,
@@ -204,6 +271,9 @@ export class Effects {
 
     for (const r of this.rings) r.life += dt;
     this.rings = this.rings.filter((r) => r.life < r.maxLife);
+
+    for (const f of this.flourishes) f.life += dt;
+    this.flourishes = this.flourishes.filter((f) => f.life < f.maxLife);
 
     this.shake *= Math.pow(0.986, dt);
     if (this.shake < 0.05) this.shake = 0;
@@ -266,6 +336,29 @@ export class Effects {
     }
   }
 
+  drawFlourishes(ctx: CanvasRenderingContext2D): void {
+    for (const f of this.flourishes) {
+      const t = clamp01(f.life / f.maxLife);
+      // Paint on fast, then hold and dry out.
+      const progress = t < f.drawFor ? easeOutQuint(t / f.drawFor) : 1;
+      const held = t < f.drawFor ? 0 : (t - f.drawFor) / (1 - f.drawFor);
+      brushStroke(ctx, f.pts, {
+        color: f.color,
+        width: f.width,
+        seed: f.seed,
+        amp: f.width * 0.16,
+        // Hold at full for the first stretch, then drop away. A mark that begins
+        // fading the instant it lands is never actually seen.
+        alpha: Math.min(1, 1.7 * (1 - held)),
+        progress,
+        // Runs drier as it fades, so the tail breaks up rather than dimming.
+        dryness: 0.35 + held * 0.9,
+        // A one-off mark: uncached by nature, so it may boil freely.
+        boil: 0,
+      });
+    }
+  }
+
   drawTexts(ctx: CanvasRenderingContext2D): void {
     for (const t of this.texts) {
       const p = clamp01(t.life / t.maxLife);
@@ -285,6 +378,7 @@ export class Effects {
     this.drops = [];
     this.texts = [];
     this.rings = [];
+    this.flourishes = [];
     this.shake = 0;
     this.freeze = 0;
     this.flash = 0;

@@ -76,7 +76,7 @@ export function StateLine({ hud }: { hud: HudData }) {
   } else if (hud.graceLeft <= 4 && hud.enemiesLeft > 0) {
     body = <span className="warning">The ink is rising · {hud.graceLeft}</span>;
   } else {
-    body = <span className="hint">Swipe to step · into a foe to strike</span>;
+    body = <span className="hint">Swipe to step · bump to strike</span>;
   }
 
   return (

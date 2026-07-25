@@ -10,6 +10,10 @@ export interface Theme {
   ghost: string;
   /** Overlay tint used for the low-health vignette. */
   danger: string;
+  /** Bright face of the gilding on the illuminated border. */
+  leaf: string;
+  /** Shadowed side of the same gilding — the two together read as metal. */
+  leafDeep: string;
 }
 
 export type ThemeName = 'day' | 'night';
@@ -27,6 +31,8 @@ export const THEMES: Record<ThemeName, Theme> = {
     gold: '#A87B2C',
     ghost: '#7E7362',
     danger: '#8C2F1E',
+    leaf: '#D9AC4A',
+    leafDeep: '#8A6216',
   },
   // The same page, read by candle.
   night: {
@@ -40,6 +46,8 @@ export const THEMES: Record<ThemeName, Theme> = {
     gold: '#DCA94D',
     ghost: '#6E6455',
     danger: '#CE5740',
+    leaf: '#E7BE5E',
+    leafDeep: '#7A5714',
   },
 };
 

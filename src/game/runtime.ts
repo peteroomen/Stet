@@ -107,6 +107,7 @@ export class Runtime {
     this.themeName = name;
     this.renderer.themeName = name;
     this.renderer.invalidatePaper();
+    this.renderer.invalidateGlyphs();
     applyThemeVars(name);
     localStorage.setItem(THEME_KEY, name);
     sfx.ui();
@@ -311,6 +312,10 @@ export class Runtime {
         sfx.strike(ev.combo, ev.killed);
         fx.addShake(cell * (0.045 + ev.dmg * 0.016));
         fx.addFreeze(ev.killed ? 72 : 40 + ev.combo * 6);
+        // The stroke itself, as a brush arc through the target. Ink when it bit
+        // deep enough to break the stance, blood when it merely landed — so the
+        // most important fact about a hit is legible from its colour alone.
+        fx.slash(x, y, ang, 0.5 + ev.combo * 0.28, ev.broke ? t.ink : t.blood, cell);
         fx.splatter(x, y, ang, 0.55 + ev.dmg * 0.16, t.blood, cell);
         fx.ring(x, y, cell * 0.12, cell * (0.42 + ev.combo * 0.06), t.blood, cell * 0.035, 380);
         fx.text(
@@ -327,6 +332,8 @@ export class Runtime {
       case 'kill': {
         const [x, y] = at(ev.pos);
         sfx.kill();
+        // A full swash with a curl — the finishing mark, unmistakable for a hit.
+        fx.swash(x, y, Math.random() * Math.PI * 2, t.ink, cell);
         fx.shatter(x, y, t.ink, cell);
         fx.splatter(x, y, Math.random() * Math.PI * 2, 1.1, t.blood, cell);
         fx.addShake(cell * 0.1);
@@ -374,7 +381,8 @@ export class Runtime {
         const [x, y] = at(ev.pos);
         if (ev.kind === 'nib') {
           sfx.upgrade();
-          fx.ring(x, y, cell * 0.1, cell * 1.2, t.gold, cell * 0.05, 700);
+          fx.swash(x, y, -Math.PI / 2, t.leaf, cell * 0.9);
+          fx.ring(x, y, cell * 0.1, cell * 1.2, t.leaf, cell * 0.05, 700);
           fx.addFlash(0.12, t.gold);
           fx.text(x, y - cell * 0.3, 'NIB  +1', t.gold, cell * 0.24, 1.4);
         } else {
@@ -413,10 +421,13 @@ export class Runtime {
       case 'unseal': {
         const [x, y] = at(ev.pos);
         sfx.unseal();
-        fx.ring(x, y, cell * 0.1, cell * 1.6, t.gold, cell * 0.05, 900);
-        fx.ring(x, y, cell * 0.1, cell * 1.0, t.gold, cell * 0.035, 620);
-        fx.addFlash(0.1, t.gold);
-        fx.text(x, y - cell * 0.5, 'THE WAY DOWN', t.gold, cell * 0.2, 1.2);
+        // Two swashes opening the way, gilded.
+        fx.swash(x, y, -Math.PI / 2, t.leaf, cell * 1.15);
+        fx.swash(x, y, Math.PI / 2, t.leafDeep, cell * 0.95);
+        fx.ring(x, y, cell * 0.1, cell * 1.6, t.leaf, cell * 0.05, 900);
+        fx.ring(x, y, cell * 0.1, cell * 1.0, t.leaf, cell * 0.035, 620);
+        fx.addFlash(0.1, t.leaf);
+        fx.text(x, y - cell * 0.5, 'THE WAY DOWN', t.leaf, cell * 0.2, 1.2);
         break;
       }
 

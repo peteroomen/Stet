@@ -48,6 +48,162 @@ export function wobble(pts: Pt[], seed: number, amp: number, boil: number): Pt[]
   return out;
 }
 
+/**
+ * A loaded-brush stroke: a tapered polygon along a wobbled path, with voids
+ * scrubbed out of the body for dry-brush texture.
+ *
+ * A stroked polyline has one width for its whole length, which is exactly what
+ * makes a nib a nib. A brush swells where it presses and runs dry as it lifts,
+ * so the mark has to be built as a filled shape whose half-width varies along
+ * the path. That is the entire difference between the two looks.
+ *
+ * This is expensive — the destination-out pass forces compositing — so callers
+ * that draw the same mark every frame should render it through the glyph cache
+ * rather than calling this directly in a render loop.
+ */
+export interface BrushOpts {
+  color: string;
+  /** Width at the fattest point of the belly. */
+  width: number;
+  seed: number;
+  amp?: number;
+  alpha?: number;
+  boil?: number;
+  /** 0..1 — draw only this much of the stroke, for a mark that paints itself on. */
+  progress?: number;
+  /** How hard the tail runs dry. 0 = none. */
+  dryness?: number;
+}
+
+export function brushStroke(ctx: CanvasRenderingContext2D, pts: Pt[], o: BrushOpts): void {
+  if (pts.length < 2) return;
+  const full = wobble(pts, o.seed, o.amp ?? 1, o.boil ?? 0);
+  const progress = clamp01(o.progress ?? 1);
+  if (progress <= 0.001) return;
+
+  // Reveal along the path so the mark reads as a brush being drawn, not a shape
+  // appearing. Interpolates the final vertex so short strokes still animate.
+  const exact = 1 + (full.length - 1) * progress;
+  const keep = Math.max(2, Math.ceil(exact));
+  const w = full.slice(0, keep);
+  if (keep > 1 && keep <= full.length) {
+    const t = exact - (keep - 1);
+    const a = full[keep - 2];
+    const b = full[keep - 1];
+    w[keep - 1] = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  }
+
+  const n = w.length;
+  const left: Pt[] = [];
+  const right: Pt[] = [];
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0 : i / (n - 1);
+    // Loaded at the start, drying to a point, with a belly in the middle.
+    const taper = Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.15)), 0.55);
+    const jitter = 0.82 + hash3(o.seed + 555, i, o.boil ?? 0) * 0.36;
+    const half = (o.width / 2) * (0.22 + 0.95 * taper) * jitter;
+    const p = w[Math.max(0, i - 1)];
+    const q = w[Math.min(n - 1, i + 1)];
+    const a = Math.atan2(q[1] - p[1], q[0] - p[0]) + Math.PI / 2;
+    left.push([w[i][0] + Math.cos(a) * half, w[i][1] + Math.sin(a) * half]);
+    right.push([w[i][0] - Math.cos(a) * half, w[i][1] - Math.sin(a) * half]);
+  }
+
+  /*
+   * Dry-brush breakup is done by SKIPPING spans of the body, not by erasing
+   * them.
+   *
+   * The obvious implementation — fill the whole shape, then scrub voids out with
+   * globalCompositeOperation 'destination-out' — works only on a canvas that
+   * contains nothing else. On the shared board canvas it punched holes straight
+   * through the paper, the grid and every actor underneath, and it cost a
+   * composite-mode switch plus a dozen extra fills per stroke every frame.
+   * Emitting the mark as disjoint runs is additive, safe anywhere, and cheaper.
+   */
+  const dryness = o.dryness ?? 1;
+  const skip: boolean[] = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0 : i / (n - 1);
+    // Breakup rises toward the tail, where a real brush has run out of ink.
+    const chance = dryness * 0.5 * Math.pow(t, 1.7);
+    skip[i] = i > 0 && i < n - 1 && hash3(o.seed + 77, i, o.boil ?? 0) < chance;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = o.alpha ?? 1;
+  ctx.fillStyle = o.color;
+
+  let start = 0;
+  const emit = (a: number, b: number) => {
+    if (b - a < 1) return;
+    ctx.beginPath();
+    ctx.moveTo(left[a][0], left[a][1]);
+    for (let i = a; i <= b; i++) ctx.lineTo(left[i][0], left[i][1]);
+    for (let i = b; i >= a; i--) ctx.lineTo(right[i][0], right[i][1]);
+    ctx.closePath();
+    ctx.fill();
+  };
+  for (let i = 0; i < n; i++) {
+    if (skip[i]) {
+      emit(start, i - 1);
+      start = i + 1;
+    }
+  }
+  emit(start, n - 1);
+
+  ctx.restore();
+}
+
+/**
+ * A volute — the scrolled corner flourish of a decorated page.
+ *
+ * Starts exactly at (cx, cy), sweeps out along `angle`, and spirals inward to a
+ * point. The spiral is drawn about a centre offset from the start, which is what
+ * separates a scroll from a circle: an arc of constant radius closes into a ring
+ * and reads, unmistakably, as a coffee-cup stain.
+ */
+export function volutePath(
+  cx: number,
+  cy: number,
+  len: number,
+  angle: number,
+  dir = 1,
+  turns = 4.2,
+  steps = 30,
+): Pt[] {
+  const ox = cx + Math.cos(angle) * len;
+  const oy = cy + Math.sin(angle) * len;
+  const pts: Pt[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const th = angle + Math.PI + dir * t * turns;
+    const r = len * (1 - 0.84 * t);
+    pts.push([ox + Math.cos(th) * r, oy + Math.sin(th) * r]);
+  }
+  return pts;
+}
+
+/** A calligraphic swash: an arc that curls back on itself. Used for flourishes. */
+export function swashPath(
+  cx: number,
+  cy: number,
+  radius: number,
+  angle: number,
+  sweep: number,
+  curl = 0.34,
+  steps = 22,
+): Pt[] {
+  const pts: Pt[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const a = angle + sweep * t;
+    // Radius grows then tucks back in, which is what gives a swash its hook.
+    const r = radius * (0.55 + Math.sin(Math.PI * t) * 0.75 - curl * t * t);
+    pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+  }
+  return pts;
+}
+
 export interface StrokeOpts {
   color: string;
   width: number;

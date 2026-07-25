@@ -83,7 +83,7 @@ src/
     enemies.ts    per-kind movement rules and telegraph planning
     floors.ts     floor generation + the connectivity guarantee
     runtime.ts    binds engine → renderer → audio, owns the loop
-  render/     canvas: hand-inked strokes, particles, screenshake, themes
+  render/     canvas: brush and nib strokes, illumination, particles, themes
   audio/      every sound synthesized at runtime — no assets, no network
   input/      swipe (with drag-chaining) + arrows + WASD + vi keys
   ui/         React chrome — HUD, title, death. Never re-renders per frame.
@@ -101,6 +101,44 @@ loop and pushes HUD data at most once per turn.
 randomised per frame — random jitter reads as the board vibrating rather than as
 something drawn by hand. Live actors add a 9fps animation *boil* on top; the
 cached paper layer does not, because a shimmering grid reads as a fault.
+
+## The look
+
+An **illuminated page** with **brush-drawn characters**.
+
+The page is gilded: a two-tone band, a vine of leaves growing off it, a scrolled
+volute in each corner, and the depth set as a rubricated roman numeral in the
+margin. All of it lives *outside* the play area — decoration that competes with
+the board for attention is decoration that makes the game worse, and this board
+has to stay readable a turn ahead.
+
+The actors are drawn with a loaded brush rather than a nib. `brushStroke()`
+builds a tapered polygon along a wobbled path whose half-width swells at the
+belly and dries to a point, which a stroked polyline cannot do at any width. A
+brush mark is roughly twice as wide as the same stroke from a nib, so anything
+with close parallel detail merges — the WARDEN carries a redrawn `brushPaths`
+silhouette for exactly that reason.
+
+Landing a stroke throws a **flourish**: a swash cut through the target tile, ink
+when the blow broke the stance and blood when it merely landed, so the most
+important fact about a hit is legible from its colour alone. A kill gets a bigger
+curl. Flourishes paint themselves on over their first third rather than
+appearing whole — a mark that materialises is a shape; a mark that draws itself
+is a brush.
+
+Two things that cost real time to get right:
+
+- Dry-brush texture is done by **skipping** spans of the body, not by erasing
+  them. The obvious implementation — fill the shape, then scrub voids with
+  `globalCompositeOperation = 'destination-out'` — works only on a canvas holding
+  nothing else. On the shared board canvas it punched holes through the paper,
+  the grid and every actor underneath. Removing it also took p95 frame time from
+  32 ms to 25 ms.
+- Everything in the glyph cache key must be **discrete**. The hero's animated
+  squash and the telegraph's pulsing alpha were continuous values baked into the
+  key, so every frame minted a fresh bitmap and blew the cache limit. Both are
+  applied to the blit instead. Measured `renderer.draw()` on a busy depth-9 board
+  at 3x DPR: nib 0.20 ms, brush uncached 0.40 ms, brush cached 0.30 ms.
 
 ## Balance is measured, not asserted
 
