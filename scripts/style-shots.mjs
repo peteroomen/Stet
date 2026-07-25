@@ -15,6 +15,9 @@ mkdirSync(OUT, { recursive: true });
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
 const server = createServer(async (req, res) => {
   const url = (req.url ?? '/').split('?')[0];
+  // The browser always asks; a mockup has none, and the resulting console 404
+  // is indistinguishable from a real one at the console-message level.
+  if (url === '/favicon.ico') return void res.writeHead(204).end();
   const path = join(DIR, normalize(url === '/' ? '/style-lab.html' : url));
   try {
     const body = await readFile(path);
@@ -32,15 +35,7 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1180, height: 1400 }, deviceScaleFactor: 2 });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-// A mockup page has no favicon; that 404 is not a rendering failure.
-page.on('console', (m) => {
-  if (m.type() !== 'error') return;
-  if (m.text().includes('favicon')) return;
-  errors.push(m.text());
-});
-page.on('requestfailed', (r) => {
-  if (!r.url().includes('favicon')) errors.push('requestfailed: ' + r.url());
-});
+page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 
 await page.goto(`http://127.0.0.1:${server.address().port}/style-lab.html`, {
   waitUntil: 'networkidle',
