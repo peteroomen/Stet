@@ -122,6 +122,12 @@ export function buildAnim(events: Ev[]): TurnAnim {
         cues.push({ at: eStart + ENEMY_MS * 0.55, ev });
         total = Math.max(total, eStart + ENEMY_MS);
         break;
+      case 'spill':
+        // After the enemy phase has landed, so the new arrival is not mistaken
+        // for one of the foes that just moved.
+        cues.push({ at: eStart + ENEMY_MS + 40, ev });
+        total = Math.max(total, eStart + ENEMY_MS + 220);
+        break;
       case 'unseal':
         cues.push({ at: eStart + ENEMY_MS + 70, ev });
         total = Math.max(total, eStart + ENEMY_MS + 70);

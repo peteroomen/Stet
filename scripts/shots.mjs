@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/shots.mjs [outDir]
  */
-import { chromium } from 'playwright';
+import { chromium } from 'playwright-core';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';

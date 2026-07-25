@@ -6,7 +6,7 @@
  * legal parameters (an exponentialRamp to 0 throws, a negative time throws), and
  * that nothing in the audio layer breaks a turn.
  */
-import { chromium } from 'playwright';
+import { chromium } from 'playwright-core';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
