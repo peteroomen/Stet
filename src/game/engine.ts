@@ -34,16 +34,19 @@ export const VIAL_HEAL = 3;
  * aggression clears a floor and timidity drowns in it — which is the lesson the
  * design wanted to teach in the first place.
  * ------------------------------------------------------------------------ */
-export const SPILL_EVERY = 5;
-
 /**
- * Bigger floors get more quiet; deeper ones get less. The depth term is the only
- * difficulty knob that keeps scaling forever — the threat budget and the enemy
- * cap both plateau, so without it a strong player faces the same four WARDENs
- * from depth 20 down.
+ * How often the page fills once grace is gone, and how fast that quickens.
+ *
+ * The threat budget caps and the board only holds seven bodies, so enemy count
+ * cannot scale forever — this is the knob that can. Deep down the ink comes
+ * faster than anything can be killed, which is what finally ends a run that
+ * skill alone would otherwise carry indefinitely.
  */
+export const spillEvery = (depth: number): number => Math.max(2, 5 - Math.floor(depth / 9));
+
+/** Bigger floors get more quiet; deeper ones get less. */
 const spillGrace = (enemies: number, depth: number): number =>
-  Math.max(6, 8 + enemies * 2 - Math.floor(depth / 4));
+  Math.max(5, 8 + enemies * 2 - Math.floor(depth / 4));
 
 export function newGame(seed: number = randomSeed()): GameState {
   const s: GameState = {
@@ -121,7 +124,7 @@ function spillSite(d: GameState, rng: Rng): Vec | null {
 /** Does the page fill on this turn? */
 function shouldSpill(d: GameState): boolean {
   const over = d.floorTurns - d.grace;
-  return over > 0 && over % SPILL_EVERY === 0;
+  return over > 0 && over % spillEvery(d.depth) === 0;
 }
 
 /**
@@ -134,6 +137,31 @@ function shouldSpill(d: GameState): boolean {
 function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
   const st = ENEMY_STATS[e.kind];
   const intent = e.intent;
+
+  const struck = e.struck;
+  e.struck = false;
+
+  if (struck && e.poise) {
+    // Stance broken: whatever it committed to does not happen. A slow unit also
+    // loses its wind-up and must start again, so interrupting a CHARGER mid-coil
+    // is worth far more than interrupting a RAT.
+    e.poise = false;
+    if (st.slow) e.ready = false;
+    ev.push({
+      t: 'stagger',
+      phase: 'e',
+      id: e.id,
+      kind: e.kind,
+      pos: { ...e.pos },
+      interrupted: intent.kind === 'move' && intent.path.length > 0,
+    });
+    return;
+  }
+
+  // Poise returns only on a turn you did not strike it. Hitting a braced enemy
+  // still hurts it, but it acts anyway — that is what stops a stagger-lock and
+  // turns a heavy into a rhythm: strike, step away, strike.
+  if (!struck) e.poise = true;
 
   if (intent.kind === 'wind') {
     e.ready = true;
@@ -215,6 +243,15 @@ export function step(state: GameState, dir: Dir): StepResult {
     p.combo = Math.min(p.combo + 1, MAX_COMBO);
     p.exposed = true; // you are mid-swing until you do something else
 
+    // A stroke heavy enough breaks a poised stance, and that enemy's committed
+    // action is cancelled in the phase that follows. Aggression is now also
+    // defence — but you can only interrupt ONE per turn, everything you did not
+    // hit strikes you at double while you are mid-swing, a stance you already
+    // broke does not break again until you leave it alone for a turn, and a
+    // heavy shrugs off anything lighter than its poiseBreak.
+    const heavy = dmg >= ENEMY_STATS[target.kind].poiseBreak;
+    target.struck = heavy;
+
     const killed = target.hp <= 0;
     ev.push({
       t: 'bump',
@@ -227,6 +264,8 @@ export function step(state: GameState, dir: Dir): StepResult {
       killed,
       kind: target.kind,
       id: target.id,
+      /** False when the blow landed but was shrugged off. */
+      broke: heavy && target.poise,
     });
 
     if (killed) {

@@ -38,6 +38,15 @@ export function TitleScreen({ best, onBegin }: { best: number; onBegin: () => vo
             exposed the whole time.
           </li>
           <li>
+            A stroke that lands also <span className="good">breaks</span> what
+            that foe had committed to — strike the one about to hit you and it
+            never lands.
+          </li>
+          <li>
+            But a broken stance <b>braces</b>: a solid arrow cannot be stopped.
+            Step away a turn to break it again.
+          </li>
+          <li>
             Every foe shows you <b>exactly where it will be</b>. They commit too.
             Bait them.
           </li>

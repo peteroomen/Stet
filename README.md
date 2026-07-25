@@ -15,7 +15,7 @@ npm run build    # typecheck + production build
 
 ---
 
-## The two rules
+## The three rules
 
 Everything else is detail.
 
@@ -25,13 +25,20 @@ and everything that hits you does **double**. Strike again and the combo builds
 (+1 damage a stroke, capped at +3) but you stay exposed the whole time. Step
 away and you are safe, but the ladder resets and they close in.
 
+**A stroke is also a block.** A blow that lands *breaks* what that foe had
+committed to — strike the one about to hit you and it simply never lands. But a
+broken stance **braces**: it cannot be broken again until you leave it alone for
+a turn, and a heavy shrugs off anything lighter than its poise. So a big enemy is
+a rhythm — strike, step away, strike — never a lock.
+
 **They commit too.** Every foe shows a ghost of exactly where it will be. That
 telegraph is computed at the end of the previous turn and executed *unchanged* —
 it is a promise, not a prediction. So a charger's two-tile lunge can be baited
-into empty paper by stepping out of the line, and it will sail past you.
+into empty paper by stepping out of the line, and it will sail past you. A dashed
+arrow can be broken; a solid one is coming whatever you do.
 
-Those two together make the board readable exactly one turn ahead, which is the
-whole game: not "what will happen", but "what am I willing to pay for this".
+Together they make the board readable exactly one turn ahead, which is the whole
+game: not "what will happen", but "what am I willing to pay for this".
 
 ## The floor
 
@@ -46,12 +53,17 @@ comfortably. Aggression clears a floor; timidity drowns in one.
 
 ## The hands
 
-| | | HP | Damage | Rule |
-|---|---|---|---|---|
-| `⋀` | **Rat** | 1 | 1 | One step toward you, every turn. Dies to a single stroke. |
-| `◇` | **Stalker** | 2 | 1 | Closes on the diagonal, but must step square-on to strike. |
-| `»` | **Charger** | 3 | 2 | Winds up, then lunges two tiles in a line. Sidestep it. |
-| `▥` | **Warden** | 5 | 3 | Slow, heavy, does not stop. |
+| | | HP | Damage | Poise | Rule |
+|---|---|---|---|---|---|
+| `⋀` | **Rat** | 1 | 1 | 1 | One step toward you, every turn. Folds to a single stroke. |
+| `◇` | **Stalker** | 2 | 1 | 1 | Closes on the diagonal, but must step square-on to strike. |
+| `»` | **Charger** | 3 | 2 | 2 | Winds up, then lunges two tiles. Sidestep it, or break the coil. |
+| `▥` | **Warden** | 5 | 3 | 3 | Shrugs off a light stroke. Only a heavy blow stops it. |
+
+**Poise** is the damage a single stroke must carry to break that thing's stance.
+Chaff folds to anything; interrupting a WARDEN costs a combo you can only build
+by standing there and trading, which is why a heavy is frightening rather than
+merely slow. Interrupting a CHARGER mid-coil also costs it the whole wind-up.
 
 The stalker's asymmetry is deliberate: a diagonal-only *attacker* would be
 unhittable, since you strike orthogonally. Forcing it to step square-on gives
@@ -100,12 +112,30 @@ is therefore a real measurement of the skill ceiling:
 
 | Bot | Median depth | Deepest |
 |---|---|---|
-| Mindless — walks at the nearest foe and bumps it | **2** | 4 |
-| Reacting — one ply, sees only its own next move | **3** | 10 |
-| Thinking — three plies, plans two moves ahead | **8** | 83 |
+| Mindless — walks at the nearest foe and bumps it | **3** | 5 |
+| Reacting — one ply, sees only its own next move | **4** | 14 |
+| Thinking — three plies, plans two moves ahead | **18** | 33 |
 
 Thinking ahead is worth roughly four times the depth of bumping into things.
 That gap is the design working.
+
+The same harness diagnosed, and then verified the fix for, the game's worst
+balance flaw. Before stagger existed, **depths 2 and 3 were the hardest floors in
+the game** — harder than depth 8:
+
+| | d1 | d2 | d3 | d4 | d5 | d8 |
+|---|---|---|---|---|---|---|
+| damage per floor, before | 0.90 | **2.71** | **2.72** | 1.35 | 1.07 | 1.18 |
+| damage per floor, after | 0.90 | 1.65 | 1.34 | 1.16 | 0.96 | 1.74 |
+| floors cleared clean, before | 33% | **13%** | **13%** | 43% | 48% | 44% |
+| floors cleared clean, after | 33% | 25% | 33% | 40% | 53% | 32% |
+
+The cause was structural: attacking could only ever *cost* you safety, so there
+was no move that both progressed a floor and prevented a blow. A bot told to
+avoid damage at almost any cost could clear 84% of floors without a scratch — and
+reached a median depth of **3**, because refusing to trade meant never
+progressing. The same bot now reaches **26**, deeper than the greedy one. Playing
+well and playing safely stopped being opposites.
 
 Two mechanics exist *because* of that harness, not because they seemed like good
 ideas:

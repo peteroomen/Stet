@@ -31,6 +31,23 @@ export interface Enemy {
   maxHp: number;
   /** Slow units alternate: false = winding up, true = will act. */
   ready: boolean;
+  /** Struck during this turn's player phase. Consumed by the enemy phase. */
+  struck: boolean;
+  /**
+   * Whether a strike will break its stance.
+   *
+   * A landed stroke on a poised enemy CANCELS its committed action — which is
+   * what makes aggression defensive. Without it, attacking could only ever cost
+   * you safety: measured, depths 2 and 3 were the hardest floors in the game
+   * (2.7 damage each, only 13% of them clean) because no move both progressed
+   * the floor and prevented a blow.
+   *
+   * But an interrupt you can repeat forever is not a fight. Breaking poise
+   * spends it; it returns only on a turn you leave the enemy alone. So a heavy
+   * is a rhythm — strike, step away, strike — and never a lock. (Measured: with
+   * unlimited stagger a 3-ply bot ran to median depth 53.)
+   */
+  poise: boolean;
   intent: Intent;
   /** Stable per-entity seed so the hand-drawn wobble doesn't reshuffle each frame. */
   seed: number;
@@ -108,6 +125,8 @@ export type Ev =
       killed: boolean;
       kind: EnemyKind;
       id: number;
+      /** Did this stroke break the stance? False = it landed but was shrugged off. */
+      broke: boolean;
     }
   | { t: 'kill'; phase: EvPhase; pos: Vec; kind: EnemyKind }
   | { t: 'emove'; phase: EvPhase; id: number; kind: EnemyKind; from: Vec; to: Vec }
@@ -124,6 +143,7 @@ export type Ev =
       hpAfter: number;
     }
   | { t: 'pickup'; phase: EvPhase; pos: Vec; kind: ItemKind; amount: number }
+  | { t: 'stagger'; phase: EvPhase; id: number; kind: EnemyKind; pos: Vec; interrupted: boolean }
   | { t: 'spill'; phase: EvPhase; pos: Vec; kind: EnemyKind }
   | { t: 'unseal'; phase: EvPhase; pos: Vec }
   | { t: 'descend'; phase: EvPhase; depth: number }

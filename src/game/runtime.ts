@@ -385,6 +385,19 @@ export class Runtime {
         break;
       }
 
+      case 'stagger': {
+        const [x, y] = at(ev.pos);
+        sfx.stagger(ev.interrupted);
+        fx.addShake(cell * (ev.interrupted ? 0.05 : 0.025));
+        fx.addFreeze(ev.interrupted ? 60 : 30);
+        // A hard ring snapping outward — the committed action breaking.
+        fx.ring(x, y, cell * 0.5, cell * 0.16, t.ink, cell * 0.05, 300);
+        if (ev.interrupted) {
+          fx.text(x, y - cell * 0.42, 'BROKEN', t.ink, cell * 0.19, 1.4);
+        }
+        break;
+      }
+
       case 'spill': {
         const [x, y] = at(ev.pos);
         sfx.spill();

@@ -122,6 +122,12 @@ export function buildAnim(events: Ev[]): TurnAnim {
         cues.push({ at: eStart + ENEMY_MS * 0.55, ev });
         total = Math.max(total, eStart + ENEMY_MS);
         break;
+      case 'stagger':
+        // Right at the top of the enemy phase — the interrupt reads as landing
+        // before the blow it prevented would have.
+        cues.push({ at: eStart + 6, ev });
+        total = Math.max(total, eStart + ENEMY_MS);
+        break;
       case 'spill':
         // After the enemy phase has landed, so the new arrival is not mistaken
         // for one of the foes that just moved.
@@ -638,18 +644,23 @@ export class Renderer {
       const dest = intent.path[intent.path.length - 1];
       const [dx, dy] = centerOf(g, dest);
 
+      // A braced enemy (poise already spent) cannot be interrupted this turn, so
+      // its path is drawn SOLID and heavier: this one is going to happen, and no
+      // stroke of yours will stop it. Dashed means "breakable".
+      const braced = !e.poise;
+
       // The committed path.
       const pts: Pt[] = [[ex, ey]];
       for (const p of intent.path) pts.push(centerOf(g, p));
       inkStroke(ctx, pts, {
         color,
-        width: g.cell * (threat ? 0.045 : 0.032),
+        width: g.cell * (threat ? 0.045 : 0.032) * (braced ? 1.35 : 1),
         seed: e.seed + 909,
         amp: g.cell * 0.012,
-        alpha,
+        alpha: braced ? Math.min(1, alpha * 1.4) : alpha,
         boil,
-        passes: 1,
-        dash: [g.cell * 0.1, g.cell * 0.09],
+        passes: braced ? 2 : 1,
+        ...(braced ? {} : { dash: [g.cell * 0.1, g.cell * 0.09] }),
       });
 
       // Ghost of where it will stand.
@@ -712,6 +723,32 @@ export class Renderer {
         seed: e.seed,
         boil,
       });
+
+      // Braced: its stance is set and a stroke will not break it this turn. Drawn
+      // as a guard bracket over the glyph, so the state is legible without having
+      // to trace the telegraph back to its owner.
+      if (!e.poise) {
+        const w = g.cell * 0.22;
+        const y = cy - g.cell * 0.42;
+        inkStroke(
+          ctx,
+          [
+            [cx - w, y + g.cell * 0.05],
+            [cx - w, y],
+            [cx + w, y],
+            [cx + w, y + g.cell * 0.05],
+          ] as Pt[],
+          {
+            color: this.theme.inkSoft,
+            width: g.cell * 0.03,
+            seed: e.seed + 1717,
+            amp: g.cell * 0.006,
+            alpha: 0.75,
+            boil,
+            passes: 1,
+          },
+        );
+      }
 
       // Health pips, so "how many more strokes" is never a memory test. They sit
       // clear of the wind-up ring (r ≈ 0.40 cell) — overlapping it made a

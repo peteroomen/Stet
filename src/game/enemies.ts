@@ -7,6 +7,14 @@ export interface EnemyStat {
   dmg: number;
   /** Slow units alternate wind-up / act, which is what makes them dodgeable. */
   slow: boolean;
+  /**
+   * Damage a single stroke must carry to break this thing's stance.
+   *
+   * Chaff folds to any hit. A WARDEN shrugs off a light tap, so interrupting one
+   * costs a combo you can only build by standing there and trading — which is
+   * the whole reason a heavy is frightening rather than merely slow.
+   */
+  poiseBreak: number;
   /** Threat budget cost used by the floor generator. */
   cost: number;
   /** First depth this kind can appear on. */
@@ -20,15 +28,17 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
   rat: {
     hp: 1,
     dmg: 1,
+    poiseBreak: 1,
     slow: false,
     cost: 1,
     from: 1,
     name: 'RAT',
-    tell: 'One step toward you, every turn. Dies to a single stroke.',
+    tell: 'One step toward you, every turn. Folds to a single stroke.',
   },
   stalker: {
     hp: 2,
     dmg: 1,
+    poiseBreak: 1,
     slow: false,
     cost: 2,
     from: 2,
@@ -38,20 +48,22 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
   charger: {
     hp: 3,
     dmg: 2,
+    poiseBreak: 2,
     slow: true,
     cost: 3,
     from: 4,
     name: 'CHARGER',
-    tell: 'Winds up, then lunges two tiles in a line. Sidestep and it sails past.',
+    tell: 'Winds up, then lunges two tiles in a line. Sidestep it, or break the coil.',
   },
   warden: {
     hp: 5,
     dmg: 3,
+    poiseBreak: 3,
     slow: true,
     cost: 5,
     from: 7,
     name: 'WARDEN',
-    tell: 'Slow, heavy, and it does not stop. Three damage a blow.',
+    tell: 'Shrugs off a light stroke. Only a heavy blow stops it.',
   },
 };
 
@@ -192,6 +204,8 @@ export function makeEnemy(id: number, kind: EnemyKind, pos: Vec, seed: number): 
     maxHp: st.hp,
     // Slow units arrive winding up, so you always get a turn of warning.
     ready: false,
+    struck: false,
+    poise: true,
     intent: HOLD,
     seed,
   };

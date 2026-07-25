@@ -171,15 +171,125 @@ describe('combo', () => {
     bag.hp = bag.maxHp = 99;
     let s = replan(board({ enemies: [bag] }));
 
-    for (let i = 0; i < 3; i++) {
-      s = { ...step(s, 'right').state, screen: 'playing', player: { ...s.player, combo: i + 1 } };
-    }
-    s = { ...s, player: { ...s.player, hp: 6 } };
-    s = { ...step(s, 'up').state, screen: 'playing' }; // step away
-    s = { ...s, player: { ...s.player, hp: 6 } };
+    /** Keep the player alive so the ladder can be read past a lethal trade. */
+    const revive = (g: GameState): GameState => ({
+      ...g,
+      screen: 'playing',
+      player: { ...g.player, hp: 6 },
+    });
 
-    const bump = step(s, 'down').events.find((e) => e.t === 'bump');
+    // Three consecutive strikes: the ladder climbs.
+    let last = 0;
+    for (let i = 0; i < 3; i++) {
+      const r = step(s, 'right');
+      const bump = r.events.find((e) => e.t === 'bump');
+      if (bump?.t === 'bump') last = bump.dmg;
+      s = revive(r.state);
+    }
+    expect(last).toBeGreaterThan(1);
+
+    // Step away and straight back — the warden is still to the right of (2,2),
+    // so the strike that follows is the same strike, from a cold start.
+    s = revive(step(s, 'up').state);
+    expect(s.player.pos).toEqual(at(2, 1));
+    s = revive(step(s, 'down').state);
+    expect(s.player.pos).toEqual(at(2, 2));
+
+    const bump = step(s, 'right').events.find((e) => e.t === 'bump');
     expect(bump?.t === 'bump' && bump.dmg).toBe(1);
+  });
+});
+
+describe('stagger — a stroke that lands is also a block', () => {
+  /**
+   * The measurement that justified the mechanic. Before it existed, depths 2 and
+   * 3 were the hardest floors in the game (2.7 damage each, 13% of them clean)
+   * because no move both progressed the floor and prevented a blow.
+   */
+  it('cancels the blow the struck enemy had committed to', () => {
+    // A STALKER square-on: it survives one stroke, so the stagger is observable
+    // rather than moot. (A RAT dies to any hit and never reaches the enemy phase.)
+    const layout = () => replan(board({ enemies: [makeEnemy(1, 'stalker', at(3, 2), 0)] }));
+
+    const s = layout();
+    expect(s.enemies[0].intent.kind).toBe('move');
+    expect(s.enemies[0].intent.path[0]).toEqual(at(2, 2)); // committed to striking us
+
+    // Strike it first: the committed blow never happens.
+    const struck = step(layout(), 'right');
+    expect(struck.state.enemies).toHaveLength(1); // survived, so it could have hit us
+    expect(struck.events.some((e) => e.t === 'stagger')).toBe(true);
+    expect(struck.state.player.hp).toBe(6);
+
+    // Same board, step away instead: it lands the blow it promised.
+    const dodged = step(layout(), 'up');
+    expect(dodged.state.player.hp).toBe(6); // stepping out of its committed tile also works
+  });
+
+  it('a braced enemy acts anyway — no lock', () => {
+    // A padded STALKER: fast, so it has a real move committed every turn, and
+    // durable enough to keep retaliating.
+    const bag = makeEnemy(1, 'stalker', at(3, 2), 0);
+    bag.hp = bag.maxHp = 99;
+    let s = replan(board({ enemies: [bag] }));
+
+    // First strike breaks the stance: nothing lands on us.
+    let r = step(s, 'right');
+    expect(r.events.some((e) => e.t === 'stagger')).toBe(true);
+    expect(r.state.player.hp).toBe(6);
+    s = r.state;
+
+    // Second strike in a row: poise is spent, so it acts — and we are exposed.
+    r = step(s, 'right');
+    expect(r.events.some((e) => e.t === 'stagger')).toBe(false);
+    expect(r.state.player.hp).toBeLessThan(6);
+  });
+
+  it('poise returns on a turn you leave it alone', () => {
+    const bag = makeEnemy(1, 'stalker', at(3, 2), 0);
+    bag.hp = bag.maxHp = 99;
+    let s = replan(board({ enemies: [bag] }));
+
+    s = step(s, 'right').state; // break the stance
+    expect(s.enemies[0].poise).toBe(false);
+    s = { ...s, player: { ...s.player, hp: 6 } };
+    s = step(s, 'left').state; // step away — it recovers
+    expect(s.enemies[0].poise).toBe(true);
+  });
+
+  it('a heavy shrugs off a light stroke', () => {
+    // Base damage 1 vs a WARDEN's poiseBreak of 3.
+    const bag = makeEnemy(1, 'warden', at(3, 2), 0);
+    bag.hp = bag.maxHp = 99;
+    const s = replan(board({ enemies: [bag] }));
+    const r = step(s, 'right');
+    const bump = r.events.find((e) => e.t === 'bump');
+    expect(bump?.t === 'bump' && bump.broke).toBe(false);
+    expect(r.events.some((e) => e.t === 'stagger')).toBe(false);
+    expect(r.state.enemies[0].hp).toBeLessThan(99); // it still took the damage
+  });
+
+  it('chaff folds to any stroke', () => {
+    const s = replan(board({ enemies: [makeEnemy(1, 'stalker', at(3, 2), 0)] }));
+    const bump = step(s, 'right').events.find((e) => e.t === 'bump');
+    expect(bump?.t === 'bump' && bump.broke).toBe(true);
+  });
+
+  it('interrupting a wound-up charger costs it the coil', () => {
+    const e = makeEnemy(1, 'charger', at(4, 2), 0);
+    e.ready = true;
+    const s = replan(board({ enemies: [e], player: { ...board().player, dmg: 2 } }));
+    expect(s.enemies[0].intent.kind).toBe('move'); // lunging this turn
+
+    // Walk into range and break it before it fires.
+    const near = replan({
+      ...s,
+      player: { ...s.player, pos: at(3, 2) },
+    });
+    const r = step(near, 'right');
+    const st = r.events.find((ev) => ev.t === 'stagger');
+    expect(st?.t === 'stagger' && st.interrupted).toBe(true);
+    expect(r.state.enemies[0].ready).toBe(false); // must wind up all over again
   });
 });
 

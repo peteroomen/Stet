@@ -237,6 +237,28 @@ export class Sfx {
     this.tone({ dur: 0.14, type: 'sawtooth', f0: 200, f1: 90, gain: 0.08, filter: 700 });
   }
 
+  /**
+   * An interrupt. A hard, bright clack that cuts across the strike sound —
+   * deliberately the most percussive thing in the palette, because landing one
+   * is the best thing you can do in a turn and it should feel like it.
+   */
+  stagger(interrupted: boolean): void {
+    this.burst({
+      dur: 0.06,
+      type: 'bandpass',
+      f0: 4200,
+      f1: 1400,
+      q: 1.1,
+      gain: interrupted ? 0.28 : 0.14,
+      attack: 0.0006,
+    });
+    this.tone({ dur: 0.09, type: 'square', f0: 780, f1: 300, gain: 0.08, filter: 2400 });
+    if (interrupted) {
+      // The enemy's own committed swing, cut off mid-air.
+      this.tone({ at: 0.02, dur: 0.13, type: 'triangle', f0: 420, f1: 140, gain: 0.1 });
+    }
+  }
+
   /** The page filling — ink welling up and something climbing out of it. */
   spill(): void {
     this.burst({ dur: 0.34, type: 'lowpass', f0: 220, f1: 620, q: 1.6, gain: 0.15, attack: 0.12 });
