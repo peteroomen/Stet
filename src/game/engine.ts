@@ -1,7 +1,8 @@
-import { ENEMY_STATS, makeEnemy, planIntent } from './enemies';
+import { ENEMY_STATS, intentThreatens, makeEnemy, planIntent } from './enemies';
 import { generateFloor } from './floors';
 import { DIR_VEC, add, allTiles, chebyshev, eq, inBounds } from './grid';
 import { Rng, randomSeed } from './rng';
+import { SHIPPED, type Rules } from './rules';
 import type { Dir, Enemy, Ev, GameState, StepResult, Vec } from './types';
 
 /**
@@ -42,13 +43,19 @@ export const VIAL_HEAL = 3;
  * faster than anything can be killed, which is what finally ends a run that
  * skill alone would otherwise carry indefinitely.
  */
-export const spillEvery = (depth: number): number => Math.max(2, 5 - Math.floor(depth / 9));
+export const spillEvery = (d: GameState, over: number): number => {
+  // PRESS: the cadence also tightens with time spent on THIS floor, so lingering
+  // costs more the longer it goes on. Without it the trickle is flat, and a flat
+  // trickle is farmable by anything that makes killing cheap (see rules.ts).
+  const ramp = d.rules.spillRampTurns > 0 ? Math.floor(over / d.rules.spillRampTurns) : 0;
+  return Math.max(1, d.rules.spillBase - Math.floor(d.depth / 9) - ramp);
+};
 
 /** Bigger floors get more quiet; deeper ones get less. */
 const spillGrace = (enemies: number, depth: number): number =>
   Math.max(5, 8 + enemies * 2 - Math.floor(depth / 4));
 
-export function newGame(seed: number = randomSeed()): GameState {
+export function newGame(seed: number = randomSeed(), rules: Rules = SHIPPED): GameState {
   const s: GameState = {
     screen: 'playing',
     depth: 0,
@@ -57,11 +64,12 @@ export function newGame(seed: number = randomSeed()): GameState {
     grace: 0,
     player: {
       pos: { x: 2, y: 2 },
-      hp: START_HP,
-      maxHp: START_HP,
+      hp: rules.startHp,
+      maxHp: rules.startHp,
       dmg: START_DMG,
       exposed: false,
       combo: 0,
+      flow: false,
       facing: 'up',
     },
     enemies: [],
@@ -72,6 +80,11 @@ export function newGame(seed: number = randomSeed()): GameState {
     rng: seed >>> 0,
     nextId: 1,
     stats: { kills: 0, turns: 0, damageTaken: 0, nibs: 0, vials: 0, deepest: 0 },
+    rules,
+    chain: 0,
+    floorHpLost: 0,
+    floorHpRallied: 0,
+    spillClock: 0,
   };
   enterFloor(s, []);
   return s;
@@ -98,7 +111,12 @@ function enterFloor(d: GameState, ev: Ev[]): void {
   d.player.pos = f.playerStart;
   d.player.exposed = false;
   d.player.combo = 0;
+  d.player.flow = false;
   d.floorTurns = 0;
+  d.floorHpLost = 0;
+  d.floorHpRallied = 0;
+  d.spillClock = 0;
+  d.chain = 0;
   d.grace = spillGrace(f.enemies.length, d.depth);
   d.stats.deepest = Math.max(d.stats.deepest, d.depth);
 
@@ -121,10 +139,21 @@ function spillSite(d: GameState, rng: Rng): Vec | null {
   return free.length ? rng.pick(rng.shuffle(free)) : null;
 }
 
-/** Does the page fill on this turn? */
+/**
+ * Does the page fill on this turn?
+ *
+ * Counted on an explicit clock rather than `over % every === 0`, because under
+ * PRESS the cadence changes while the floor is running and a modulo against a
+ * moving divisor both double-fires and skips. With a flat cadence the two are
+ * identical, so this is behaviour-preserving for the shipped rules.
+ */
 function shouldSpill(d: GameState): boolean {
   const over = d.floorTurns - d.grace;
-  return over > 0 && over % spillEvery(d.depth) === 0;
+  if (over <= 0) return false;
+  d.spillClock += 1;
+  if (d.spillClock < spillEvery(d, over)) return false;
+  d.spillClock = 0;
+  return true;
 }
 
 /**
@@ -179,9 +208,11 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
 
     if (eq(next, d.player.pos)) {
       // Doubled while you are mid-swing. This is the whole cost of committing.
-      const dmg = st.dmg * (d.player.exposed ? 2 : 1);
+      const dmg = st.dmg * (d.player.exposed ? d.rules.exposedMult : 1);
       d.player.hp -= dmg;
       d.stats.damageTaken += dmg;
+      d.floorHpLost += dmg;
+      d.player.flow = false; // a charge you were hit through is not a dodge
       ev.push({
         t: 'eattack',
         phase: 'e',
@@ -220,9 +251,15 @@ export function step(state: GameState, dir: Dir): StepResult {
   if (state.screen !== 'playing') return { state, events: [], spent: false };
 
   const d: GameState = structuredClone(state);
+  const r = d.rules;
   const ev: Ev[] = [];
   const p = d.player;
   p.facing = dir;
+
+  // Where you stood when the turn opened, and what had committed to strike that
+  // tile. Both are needed after the enemy phase to tell a dodge from a retreat.
+  const openedOn: Vec = { ...p.pos };
+  const wasAimedAt = d.enemies.some((e) => intentThreatens(e.intent, openedOn));
 
   const to = add(p.pos, DIR_VEC[dir]);
 
@@ -238,7 +275,11 @@ export function step(state: GameState, dir: Dir): StepResult {
 
   if (target) {
     const bonus = Math.min(p.combo, MAX_COMBO);
-    const dmg = p.dmg + bonus;
+    // A charged stroke lands heavier and cannot be shrugged off. Spent here
+    // whether or not it kills — you only get one punish per dodge.
+    const charged = p.flow;
+    p.flow = false;
+    const dmg = p.dmg + bonus + (charged ? r.flowBonus : 0);
     target.hp -= dmg;
     p.combo = Math.min(p.combo + 1, MAX_COMBO);
     p.exposed = true; // you are mid-swing until you do something else
@@ -249,7 +290,7 @@ export function step(state: GameState, dir: Dir): StepResult {
     // hit strikes you at double while you are mid-swing, a stance you already
     // broke does not break again until you leave it alone for a turn, and a
     // heavy shrugs off anything lighter than its poiseBreak.
-    const heavy = dmg >= ENEMY_STATS[target.kind].poiseBreak;
+    const heavy = charged || dmg >= ENEMY_STATS[target.kind].poiseBreak;
     target.struck = heavy;
 
     const killed = target.hp <= 0;
@@ -272,6 +313,33 @@ export function step(state: GameState, dir: Dir): StepResult {
       d.enemies = d.enemies.filter((e) => e.id !== target.id);
       d.stats.kills += 1;
       ev.push({ t: 'kill', phase: 'p', pos: { ...to }, kind: target.kind });
+
+      // RALLY: a kill wins back health lost on this floor, and nothing more.
+      // Capped per floor so the spill cannot be farmed into an HP fountain.
+      if (r.rallyPerKill > 0) {
+        const room = Math.min(
+          r.rallyPerKill,
+          p.maxHp - p.hp,
+          d.floorHpLost,
+          Math.max(0, r.rallyFloorCap - d.floorHpRallied),
+        );
+        if (room > 0) {
+          p.hp += room;
+          d.floorHpRallied += room;
+          ev.push({ t: 'pickup', phase: 'p', pos: { ...to }, kind: 'vial', amount: room });
+        }
+      }
+
+      // MOMENTUM: the enemy phase is skipped and you act again. Enemies keep the
+      // intents they already committed to, so you are moving inside a frozen
+      // turn rather than being handed a fresh board — the telegraph stays a
+      // promise. Bounded so a lucky clump cannot clear a floor in one input.
+      // Never on the kill that clears the floor — the stairs unseal in the enemy
+      // phase, so a free action there would just be a wasted swipe.
+      if (r.killGrantsActions > 0 && d.chain < r.killGrantsActions && d.enemies.length > 0) {
+        d.chain += 1;
+        return { state: d, events: ev, spent: true };
+      }
     }
     // You do NOT advance into the tile. A bump attack is a swing, not a step.
   } else {
@@ -305,7 +373,16 @@ export function step(state: GameState, dir: Dir): StepResult {
   }
 
   // --- Enemy phase --------------------------------------------------------
+  d.chain = 0; // a turn is resolving; the momentum window closes here
   for (const e of d.enemies) execIntent(e, d, ev);
+
+  // FLOW: you stepped off a tile something had committed to, and nothing landed.
+  // Deliberately requires that the tile was ACTUALLY aimed at — walking around an
+  // empty board is not a dodge — and that you took no damage at all, so weaving
+  // out of one strike into another earns nothing.
+  if (r.flowBonus > 0 && !eq(p.pos, openedOn) && wasAimedAt && !ev.some((e) => e.t === 'eattack')) {
+    p.flow = true;
+  }
 
   if (p.hp <= 0) {
     p.hp = 0;

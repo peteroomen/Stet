@@ -269,8 +269,12 @@ function paintGlyph(ctx: CanvasRenderingContext2D, def: GlyphDef, o: DrawOpts): 
   }
 
   if (o.brush) {
+    // 1.85x read as a blot rather than a brush mark — at that weight a 5x5 board
+    // of actors is mostly ink, and the silhouettes stop being distinguishable at
+    // a glance, which is the one thing they have to do. The variation that was
+    // lost by thinning is put back as pressure, not as width.
     const w =
-      o.size * 0.075 * (def.weight ?? 1) * (o.widthScale ?? 1) * 1.85 * (def.brushWeight ?? 1);
+      o.size * 0.075 * (def.weight ?? 1) * (o.widthScale ?? 1) * 1.48 * (def.brushWeight ?? 1);
     const paths = def.brushPaths ?? def.paths;
     paths.forEach((path, i) => {
       brushStroke(ctx, path.map(map), {
@@ -280,7 +284,8 @@ function paintGlyph(ctx: CanvasRenderingContext2D, def: GlyphDef, o: DrawOpts): 
         amp: o.size * 0.016,
         alpha,
         boil: o.boil ?? 0,
-        dryness: 0.85,
+        dryness: 0.32,
+        pressure: 0.28,
       });
     });
   } else {

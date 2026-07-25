@@ -3,13 +3,16 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "STET — a 5x5 swipe-crawl. Every stroke stands.",
+  "description": "STET \u2014 a 5x5 swipe-crawl. Every stroke stands.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "model": "vite-node scripts/model.ts",
+    "check:swipe": "vite build && node scripts/swipe-check.mjs",
+    "shots:brush": "node scripts/brush-shots.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

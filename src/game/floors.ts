@@ -1,6 +1,7 @@
 import { ENEMY_ORDER, ENEMY_STATS, makeEnemy } from './enemies';
 import { ORTHO, SIZE, add, allTiles, chebyshev, eq, inBounds, key, manhattan } from './grid';
 import type { Rng } from './rng';
+import { SHIPPED, type Rules } from './rules';
 import type { Enemy, EnemyKind, GameState, Item, Vec } from './types';
 
 /**
@@ -47,8 +48,8 @@ export interface Floor {
  * quality (a WARDEN instead of five RATs) rather than only in quantity — a 5x5
  * board runs out of room long before it runs out of difficulty.
  */
-export function threatBudget(depth: number): number {
-  return Math.min(2 + Math.round(depth * 1.45), 20);
+export function threatBudget(depth: number, rules: Rules = SHIPPED): number {
+  return Math.min(rules.threatBase + Math.round(depth * rules.threatSlope), 20);
 }
 
 export function blotCount(depth: number, rng: Rng): number {
@@ -62,10 +63,10 @@ function unlocked(depth: number): EnemyKind[] {
 }
 
 /** Buy a roster from the depth's budget, biased toward the heaviest thing affordable. */
-export function rollRoster(depth: number, rng: Rng): EnemyKind[] {
+export function rollRoster(depth: number, rng: Rng, rules: Rules = SHIPPED): EnemyKind[] {
   if (depth === 1) return ['rat', 'rat', 'rat']; // clean tutorial floor
 
-  let budget = threatBudget(depth);
+  let budget = threatBudget(depth, rules);
   const pool = unlocked(depth);
   const out: EnemyKind[] = [];
 
@@ -118,7 +119,7 @@ export function generateFloor(depth: number, rng: Rng, s: GameState): Floor {
 
   // Enemies never spawn on top of you or in your face — minimum two tiles of air.
   const enemies: Enemy[] = [];
-  const roster = rollRoster(depth, rng);
+  const roster = rollRoster(depth, rng, s.rules);
   const spawnCands = rng.shuffle(tiles().filter((t) => chebyshev(t, playerStart) >= 2));
   let id = s.nextId;
   for (const kind of roster) {

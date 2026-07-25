@@ -73,6 +73,13 @@ export interface BrushOpts {
   progress?: number;
   /** How hard the tail runs dry. 0 = none. */
   dryness?: number;
+  /**
+   * Depth of the low-frequency width swell along the stroke, 0..~0.5.
+   *
+   * This is where a brush's variation actually lives. 0 gives an even ribbon —
+   * technically a brush shape, but it reads as a fat nib.
+   */
+  pressure?: number;
 }
 
 export function brushStroke(ctx: CanvasRenderingContext2D, pts: Pt[], o: BrushOpts): void {
@@ -96,12 +103,34 @@ export function brushStroke(ctx: CanvasRenderingContext2D, pts: Pt[], o: BrushOp
   const n = w.length;
   const left: Pt[] = [];
   const right: Pt[] = [];
+
+  /*
+   * Pressure: three fixed harmonics with a per-stroke random phase.
+   *
+   * The width variation used to be a single taper plus per-vertex jitter, and
+   * that reads as a uniform ribbon with a fuzzy edge — the mark is the same
+   * weight everywhere and only its outline wobbles. A real brush varies over the
+   * LENGTH of the stroke, not vertex to vertex, so the swell has to be
+   * low-frequency. Two-and-a-bit cycles across the stroke is enough to see and
+   * not so much that a short glyph path turns into a caterpillar.
+   */
+  const ph = hash3(o.seed + 991, 0, 0) * Math.PI * 2;
+  const ph2 = hash3(o.seed + 992, 0, 0) * Math.PI * 2;
+  const press = o.pressure ?? 0.34;
+
   for (let i = 0; i < n; i++) {
     const t = n === 1 ? 0 : i / (n - 1);
-    // Loaded at the start, drying to a point, with a belly in the middle.
-    const taper = Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.15)), 0.55);
-    const jitter = 0.82 + hash3(o.seed + 555, i, o.boil ?? 0) * 0.36;
-    const half = (o.width / 2) * (0.22 + 0.95 * taper) * jitter;
+    // Loaded at the start, drying to a point. The exponent controls how much of
+    // the stroke sits at full width: 0.55 held ~60% of it within a fifth of the
+    // maximum, which is the "too constant" read.
+    const taper = Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.12)), 0.72);
+    const swell =
+      1 + press * (0.62 * Math.sin(ph + t * 5.1) + 0.38 * Math.sin(ph2 + t * 11.3));
+    const jitter = 0.93 + hash3(o.seed + 555, i, o.boil ?? 0) * 0.14;
+    // The floor matters more than it looks: a glyph path is drawn as ONE stroke,
+    // so its ends are the corners of a silhouette. Taper them to nothing and the
+    // shape stops closing and reads as broken rather than as drawn.
+    const half = (o.width / 2) * (0.24 + 0.9 * taper) * swell * jitter;
     const p = w[Math.max(0, i - 1)];
     const q = w[Math.min(n - 1, i + 1)];
     const a = Math.atan2(q[1] - p[1], q[0] - p[0]) + Math.PI / 2;

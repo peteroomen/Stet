@@ -353,6 +353,10 @@ export class Effects {
         progress,
         // Runs drier as it fades, so the tail breaks up rather than dimming.
         dryness: 0.35 + held * 0.9,
+        // A swash is the one mark here that SHOULD swell hard — it is a
+        // calligraphic gesture rather than a silhouette that has to stay legible,
+        // so it carries more pressure variation than the actors do.
+        pressure: 0.44,
         // A one-off mark: uncached by nature, so it may boil freely.
         boil: 0,
       });

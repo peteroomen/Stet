@@ -115,9 +115,24 @@ has to stay readable a turn ahead.
 The actors are drawn with a loaded brush rather than a nib. `brushStroke()`
 builds a tapered polygon along a wobbled path whose half-width swells at the
 belly and dries to a point, which a stroked polyline cannot do at any width. A
-brush mark is roughly twice as wide as the same stroke from a nib, so anything
-with close parallel detail merges — the WARDEN carries a redrawn `brushPaths`
-silhouette for exactly that reason.
+brush mark is wider than the same stroke from a nib, so anything with close
+parallel detail merges — the WARDEN carries a redrawn `brushPaths` silhouette
+for exactly that reason.
+
+The variation lives in **pressure**, not in texture. The first version varied
+width with a flat taper plus per-vertex jitter, which is a uniform ribbon with a
+fuzzy edge — the same weight everywhere, wobbling. A real brush varies over the
+*length* of the stroke, so the swell is now two low-frequency harmonics with a
+per-stroke phase, and the high-frequency jitter is nearly gone. Weight came down
+with it (1.85x a nib to 1.48x) and dry-brush breakup went 0.85 to 0.32: at the
+old settings the marks were more ink than paper and the silhouettes stopped being
+distinguishable at a glance, which is the one thing they have to do.
+
+`node scripts/brush-shots.mjs` renders every glyph across a grid of settings with
+the nib version on top, which is how those numbers were chosen. Picking them on a
+live board does not work — the marks are small, half of them are moving, and a
+silhouette that has stopped reading as itself is exactly what a busy screen
+hides.
 
 Landing a stroke throws a **flourish**: a swash cut through the target tile, ink
 when the blow broke the stance and blood when it merely landed, so the most
@@ -175,6 +190,56 @@ reached a median depth of **3**, because refusing to trade meant never
 progressing. The same bot now reaches **26**, deeper than the greedy one. Playing
 well and playing safely stopped being opposites.
 
+### Modelling a rule change before shipping it
+
+`src/game/rules.ts` holds the game's numbers and a few optional mechanics in a
+`Rules` object carried on the state, so a whole design direction can be played by
+the bots without forking the engine. `npm run model` plays every variant on the
+same seeds with the same bots and prints the comparison.
+
+The number that matters is **reacting** — one ply, sees the consequence of its
+own move and plans nothing further. That is the honest model of someone reading
+the board in real time on a phone, and it is roughly how far the game feels
+playable. `thinking` (three plies) is the ceiling. A good change raises the floor
+faster than the ceiling; one that flattens the gap has removed the skill.
+
+| variant | mindless | reacting | human\* | 2-ply | thinking | ceiling/floor |
+|---|---|---|---|---|---|---|
+| shipped | 3 | **4** | 3 | 7 | 18 | 4.5x |
+| exposure removed (diagnostic) | 4 | 4 | 4 | 9 | 20 | 5.0x |
+| A tuned — flatter ramp, +1 heart | 4 | 5 | 4 | 10 | 20 | 4.0x |
+| B momentum — a kill frees an action | 4 | **1** | 2 | 16 | 31 | 31x |
+| C flow — dodge charges the next strike | 3 | **6** | 4 | 12 | 23 | **3.8x** |
+| D rally — a kill wins back lost health | 4 | 5 | 4 | 12 | 21 | 4.2x |
+| F press — the spill accelerates | 3 | 2 | 2 | 4 | 9 | 4.5x |
+
+\* `human` is 1-ply with a 12% misplay rate.
+
+Four things that were not obvious until they were measured:
+
+- **Exposure is not what is killing you.** Deleting the doubling outright — the
+  scariest rule in the game — buys a reactive player *nothing* (4 → 4). What
+  kills you is having no move that both progresses the floor and prevents a blow.
+- **Momentum is a trap.** Letting a kill free an action reads as the obvious
+  arcade lever, and a 3-ply bot loved it (18 → 31). A reactive one went to depth
+  **1**: the free action's best use is *escape*, so aggression turns into
+  sustainable kiting, and killing spilled rats became a renewable supply of free
+  actions. It killed 72 things per run against 35 shipped, took *less* damage,
+  and never left floor one.
+- **Flow is the one that works.** Reacting 4 → 6, 2-ply 7 → 12, and the
+  ceiling/floor ratio *tightens* to 3.8x — the floor rose faster than the top.
+  Damage falls on every floor (d2 2.22 → 1.52) and clean clears rise on every
+  floor (d2 23% → 30%).
+- **Pace is a separate problem with no good answer yet.** A floor costs a
+  reactive player **32–58 swipes**, which is attrition, not arcade. Accelerating
+  the spill fixes the pace outright (32 → 15 inputs per floor) and is *still*
+  wrong at every ramp tried (8/12/18/26): floors got faster **and** cleaner and
+  median depth fell anyway, because you now die to the clock. It also stalls —
+  the board caps at seven bodies, `spillSite` returns null, and the clock quietly
+  stops. Pace needs a lever that is not the spill.
+
+### The mechanics the harness produced
+
 Two mechanics exist *because* of that harness, not because they seemed like good
 ideas:
 
@@ -192,9 +257,34 @@ against the strongest bot) and set to **7**.
 
 ## Controls
 
-Swipe, arrows, `WASD`, or `hjkl`. Holding a drag and tracing a path walks tile
-by tile — the swipe origin re-anchors each time a direction fires. `Enter` to
-begin, `R` to go again. Fully keyboard operable.
+Swipe, arrows, `WASD`, or `hjkl`. `Enter` to begin, `R` to go again. Fully
+keyboard operable.
+
+**One flick is one step. A held drag traces a path.** Those are different
+gestures and only time can tell them apart — a flick and the first half of a
+deliberate drag cover exactly the same pixels. The threshold is 22 px, a quarter
+of a tile on a 390 px phone, so before there was a time gate an ordinary swipe
+crossed it three or four times and asked for three or four turns.
+
+`node scripts/swipe-check.mjs` dispatches pointer events at real speeds and
+counts turns spent per gesture. Before / after:
+
+| gesture | steps fired | turns spent |
+|---|---|---|
+| fast flick (110 px, 143 ms) | 4 → **1** | 2 → **1** |
+| normal swipe (130 px, 250 ms) | 5 → **1** | 2 → **1** |
+| held drag (260 px, ~1 s) | 10 → 6 | 2 → **4** |
+
+It was wrong in both directions at once, and for the same reason: the runtime
+buffers exactly one direction, so a gesture that fired ten silently became two.
+Flicks over-fired and drags under-chained, and every gesture landed on the same
+number.
+
+Two turns per swipe is not a small feel problem on this board. The enemy phase
+runs twice against a board you read once — and if the first step was a strike,
+the second resolves while you are `EXPOSED` and everything hits at double. No bot
+in `bots.ts` could ever have caught this: they submit exactly one direction per
+turn, so the rules looked perfectly fair while the game ate your health.
 
 ## Debugging
 

@@ -1,5 +1,7 @@
 /** Core value types for the STET rules engine. No DOM, no rendering, no audio. */
 
+import type { Rules } from './rules';
+
 export type Vec = { x: number; y: number };
 export type Dir = 'up' | 'down' | 'left' | 'right';
 
@@ -74,6 +76,13 @@ export interface Player {
   exposed: boolean;
   /** Consecutive strikes. Each adds +1 damage, capped at MAX_COMBO. */
   combo: number;
+  /**
+   * Charged by stepping out of a committed strike; spent on the next one.
+   *
+   * Only ever set under a rule variant with `flowBonus > 0` — see rules.ts. The
+   * shipped game leaves it permanently false.
+   */
+  flow: boolean;
   facing: Dir;
 }
 
@@ -106,6 +115,16 @@ export interface GameState {
   rng: number;
   nextId: number;
   stats: RunStats;
+  /** Which rule variant this run is being played under. See rules.ts. */
+  rules: Rules;
+  /** Extra actions already taken this turn under MOMENTUM. */
+  chain: number;
+  /** Health lost on the current floor — the ceiling on what RALLY can give back. */
+  floorHpLost: number;
+  /** Health RALLY has already given back on this floor. */
+  floorHpRallied: number;
+  /** Turns since the last spill. Reset on descent and on each spill. */
+  spillClock: number;
 }
 
 /** Which half of the turn an event belongs to — the renderer schedules from this. */
