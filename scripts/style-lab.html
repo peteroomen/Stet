@@ -1,0 +1,36 @@
+<!doctype html>
+<!--
+  Style lab: the SAME board, drawn five ways.
+
+  Not wired to the engine — a fixed scenario so the treatments can be compared
+  honestly rather than across different boards. Open it, or shoot it with
+  scripts/style-shots.mjs.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>STET · style lab</title>
+    <style>
+      body {
+        margin: 0;
+        background: #23201b;
+        color: #b8ab90;
+        font-family: 'Iowan Old Style', Palatino, Georgia, serif;
+      }
+      .grid { display: flex; flex-wrap: wrap; gap: 18px; padding: 18px; }
+      figure { margin: 0; }
+      canvas { display: block; border-radius: 2px; }
+      figcaption {
+        padding: 8px 2px 0;
+        font-size: 13px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      figcaption b { color: #e8dfc9; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <div class="grid" id="grid"></div>
+    <script type="module" src="./style-lab.js"></script>
+  </body>
+</html>
