@@ -1,0 +1,426 @@
+import { sfx } from '../audio/sfx';
+import { Effects } from '../render/effects';
+import { EMPTY_ANIM, Renderer, buildAnim, type TurnAnim } from '../render/renderer';
+import { applyThemeVars, type ThemeName } from '../render/theme';
+import { demoState, newGame, step } from './engine';
+import { randomSeed } from './rng';
+import type { Dir, Ev, GameState } from './types';
+
+/**
+ * Accept the next input once the turn is this far through. Buffering a swipe
+ * feels responsive; letting it land slightly early makes held-drag movement flow
+ * instead of stuttering between turns.
+ */
+const EARLY = 0.84;
+
+const BEST_KEY = 'stet.best.v1';
+const THEME_KEY = 'stet.theme.v1';
+const MUTE_KEY = 'stet.mute.v1';
+
+export interface Hud {
+  screen: GameState['screen'];
+  depth: number;
+  hp: number;
+  maxHp: number;
+  dmg: number;
+  exposed: boolean;
+  combo: number;
+  enemiesLeft: number;
+  stairsOpen: boolean;
+  kills: number;
+  turns: number;
+  best: number;
+  /** Turns of quiet left before the page starts filling; 0 once it has begun. */
+  graceLeft: number;
+  spilling: boolean;
+}
+
+function hudOf(s: GameState, best: number): Hud {
+  return {
+    screen: s.screen,
+    depth: s.depth,
+    hp: s.player.hp,
+    maxHp: s.player.maxHp,
+    dmg: s.player.dmg,
+    exposed: s.player.exposed,
+    combo: s.player.combo,
+    enemiesLeft: s.enemies.length,
+    stairsOpen: s.stairsOpen,
+    kills: s.stats.kills,
+    turns: s.stats.turns,
+    best,
+    graceLeft: Math.max(0, s.grace - s.floorTurns),
+    spilling: s.floorTurns >= s.grace && s.enemies.length > 0,
+  };
+}
+
+export class Runtime {
+  state: GameState;
+  anim: TurnAnim = EMPTY_ANIM;
+  renderer: Renderer;
+  effects = new Effects();
+
+  private clock = 0;
+  private wall = 0;
+  private last = 0;
+  private raf = 0;
+  private queued: Dir | null = null;
+  private size = 0;
+  private running = false;
+
+  best = 0;
+  themeName: ThemeName = 'day';
+  onHud: (h: Hud) => void = () => {};
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.best = Number(localStorage.getItem(BEST_KEY) ?? 0) || 0;
+    this.themeName = (localStorage.getItem(THEME_KEY) as ThemeName) ?? 'day';
+    const muted = localStorage.getItem(MUTE_KEY) === '1';
+    sfx.setMuted(muted);
+
+    this.state = demoState(randomSeed());
+    this.renderer = new Renderer(canvas, this.effects, this.themeName);
+    applyThemeVars(this.themeName);
+  }
+
+  get muted(): boolean {
+    return sfx.muted;
+  }
+
+  start(): void {
+    if (this.running) return;
+    this.running = true;
+    this.last = performance.now();
+    const tick = (ts: number) => {
+      this.frame(ts);
+      this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
+
+  stop(): void {
+    this.running = false;
+    cancelAnimationFrame(this.raf);
+  }
+
+  setTheme(name: ThemeName): void {
+    this.themeName = name;
+    this.renderer.themeName = name;
+    this.renderer.invalidatePaper();
+    applyThemeVars(name);
+    localStorage.setItem(THEME_KEY, name);
+    sfx.ui();
+  }
+
+  toggleMute(): void {
+    const next = !sfx.muted;
+    sfx.setMuted(next);
+    localStorage.setItem(MUTE_KEY, next ? '1' : '0');
+    if (!next) sfx.ui();
+  }
+
+  /** Any user gesture unlocks audio; browsers require it. */
+  unlockAudio(): void {
+    sfx.unlock();
+  }
+
+  newRun(): void {
+    this.unlockAudio();
+    this.state = newGame(randomSeed());
+    this.anim = EMPTY_ANIM;
+    this.clock = 0;
+    this.queued = null;
+    this.effects.reset();
+    this.renderer.invalidatePaper();
+    sfx.startDrone(this.state.depth);
+    sfx.setDroneDepth(this.state.depth);
+    sfx.descend(this.state.depth);
+    this.pushHud();
+  }
+
+  toTitle(): void {
+    this.state = demoState(randomSeed());
+    this.anim = EMPTY_ANIM;
+    this.clock = 0;
+    this.queued = null;
+    this.effects.reset();
+    this.renderer.invalidatePaper();
+    sfx.stopDrone();
+    this.pushHud();
+  }
+
+  /** Feed a direction. Buffers if a turn is still resolving. */
+  input(dir: Dir): void {
+    if (this.state.screen !== 'playing') return;
+    if (this.clock < this.anim.total * EARLY) {
+      this.queued = dir;
+      return;
+    }
+    this.resolve(dir);
+  }
+
+  private resolve(dir: Dir): void {
+    const before = this.state.depth;
+    const r = step(this.state, dir);
+    this.state = r.state;
+    this.anim = buildAnim(r.events);
+    this.clock = 0;
+    this.queued = null;
+
+    if (this.state.depth !== before) {
+      // New page: wipe the fight you had on the last one.
+      this.effects.reset();
+      this.renderer.invalidatePaper();
+    }
+
+    if (this.state.screen === 'dead' && this.state.stats.deepest > this.best) {
+      this.best = this.state.stats.deepest;
+      localStorage.setItem(BEST_KEY, String(this.best));
+    }
+
+    this.pushHud();
+  }
+
+  private pushHud(): void {
+    this.onHud(hudOf(this.state, this.best));
+  }
+
+  /* ---------------------------------------------------------------------
+   * Debug seams. Reaching a WARDEN honestly takes seven floors, which is far
+   * too slow a loop for tuning how one looks and sounds. Exposed on
+   * `window.__stet` so the screenshot script and a live console can both drive
+   * the game to an exact board.
+   * ------------------------------------------------------------------ */
+
+  /** Rebuild the run at `depth` without playing the floors in between. */
+  jumpTo(depth: number): void {
+    this.unlockAudio();
+    let s = newGame(randomSeed());
+    let guard = 0;
+    while (s.depth < depth && guard++ < 500) {
+      // Clear the floor, stand NEXT TO the stairs, then walk onto them. Standing
+      // on the stairs and stepping walks off them, which is how this silently
+      // stalled at depth 2.
+      const st = s.stairs;
+      const above = st.y > 0;
+      const from = { x: st.x, y: above ? st.y - 1 : st.y + 1 };
+      s = {
+        ...s,
+        enemies: [],
+        blots: [],
+        stairsOpen: true,
+        player: { ...s.player, pos: from },
+      };
+      const r = step(s, above ? 'down' : 'up');
+      if (!r.events.some((e) => e.t === 'descend')) break;
+      s = r.state;
+    }
+    this.state = s;
+    this.anim = EMPTY_ANIM;
+    this.clock = 0;
+    this.queued = null;
+    this.effects.reset();
+    this.renderer.invalidatePaper();
+    sfx.startDrone(this.state.depth);
+    sfx.setDroneDepth(this.state.depth);
+    this.pushHud();
+  }
+
+  /** End the run where it stands. */
+  kill(): void {
+    this.state = {
+      ...this.state,
+      screen: 'dead',
+      player: { ...this.state.player, hp: 0 },
+    };
+    if (this.state.stats.deepest > this.best) {
+      this.best = this.state.stats.deepest;
+      localStorage.setItem(BEST_KEY, String(this.best));
+    }
+    this.anim = buildAnim([{ t: 'death', phase: 'e', depth: this.state.depth }]);
+    this.clock = 0;
+    this.pushHud();
+  }
+
+  private frame(ts: number): void {
+    const raw = Math.min(ts - this.last, 50);
+    this.last = ts;
+    this.wall += raw;
+
+    // Hitstop: freeze the turn and its effects, but let the boil keep going —
+    // a frozen frame that is still redrawing by hand reads as impact, not as a
+    // dropped frame.
+    let dt = raw;
+    if (this.effects.freeze > 0) {
+      const used = Math.min(this.effects.freeze, raw);
+      this.effects.freeze -= used;
+      dt = raw - used;
+    }
+
+    this.clock += dt;
+    this.effects.update(dt);
+
+    this.size = Math.min(
+      this.renderer.canvas.clientWidth,
+      this.renderer.canvas.clientHeight,
+    );
+
+    for (let i = 0; i < this.anim.cues.length; i++) {
+      if (!this.anim.fired[i] && this.clock >= this.anim.cues[i].at) {
+        this.anim.fired[i] = true;
+        this.fire(this.anim.cues[i].ev);
+      }
+    }
+
+    if (this.queued && this.clock >= this.anim.total * EARLY) {
+      const d = this.queued;
+      this.queued = null;
+      this.resolve(d);
+    }
+
+    this.renderer.draw(this.state, this.anim, this.clock, this.wall);
+  }
+
+  /* ---------------------------------------------------------------------
+   * Event → feel. Everything the player hears and every particle they see is
+   * driven from the engine's event list, so the fiction can never drift out of
+   * step with the rules.
+   * ------------------------------------------------------------------ */
+  private fire(ev: Ev): void {
+    const g = this.size;
+    const cell = g / 5;
+    const fx = this.effects;
+    const t = this.renderer.theme;
+    const at = (v: { x: number; y: number }) => this.renderer.tileCenter(g, v);
+
+    switch (ev.t) {
+      case 'move':
+        sfx.step();
+        break;
+
+      case 'blocked': {
+        sfx.blocked();
+        fx.addShake(cell * 0.03);
+        break;
+      }
+
+      case 'bump': {
+        const [x, y] = at(ev.to);
+        const [px, py] = at(ev.from);
+        const ang = Math.atan2(y - py, x - px);
+        sfx.strike(ev.combo, ev.killed);
+        fx.addShake(cell * (0.045 + ev.dmg * 0.016));
+        fx.addFreeze(ev.killed ? 72 : 40 + ev.combo * 6);
+        fx.splatter(x, y, ang, 0.55 + ev.dmg * 0.16, t.blood, cell);
+        fx.ring(x, y, cell * 0.12, cell * (0.42 + ev.combo * 0.06), t.blood, cell * 0.035, 380);
+        fx.text(
+          x,
+          y - cell * 0.28,
+          ev.combo > 0 ? `${ev.dmg}` : `${ev.dmg}`,
+          t.blood,
+          cell * (0.26 + ev.combo * 0.035),
+          ev.combo > 1 ? 1.4 : 1,
+        );
+        break;
+      }
+
+      case 'kill': {
+        const [x, y] = at(ev.pos);
+        sfx.kill();
+        fx.shatter(x, y, t.ink, cell);
+        fx.splatter(x, y, Math.random() * Math.PI * 2, 1.1, t.blood, cell);
+        fx.addShake(cell * 0.1);
+        fx.addFreeze(48);
+        fx.ring(x, y, cell * 0.1, cell * 0.8, t.ink, cell * 0.04, 480);
+        break;
+      }
+
+      case 'emove': {
+        // Only the two-tile lunge gets a sound; every enemy stepping every turn
+        // would be noise.
+        if (Math.abs(ev.to.x - ev.from.x) + Math.abs(ev.to.y - ev.from.y) > 1) {
+          sfx.lunge();
+          const [x, y] = at(ev.to);
+          fx.addShake(cell * 0.03);
+          fx.splatter(x, y, Math.random() * Math.PI * 2, 0.3, t.inkSoft, cell * 0.6, false);
+        }
+        break;
+      }
+
+      case 'wind': {
+        sfx.wind();
+        const [x, y] = at(ev.pos);
+        fx.ring(x, y, cell * 0.6, cell * 0.3, t.blood, cell * 0.03, 520);
+        break;
+      }
+
+      case 'eattack': {
+        const [x, y] = at(ev.at);
+        const [ex, ey] = at(ev.from);
+        const ang = Math.atan2(y - ey, x - ex);
+        sfx.hurt(ev.exposed);
+        fx.addShake(cell * (0.06 + ev.dmg * 0.022));
+        fx.addFreeze(ev.exposed ? 95 : 55);
+        fx.splatter(x, y, ang, 0.7 + ev.dmg * 0.2, t.blood, cell);
+        fx.text(x, y - cell * 0.3, `-${ev.dmg}`, t.blood, cell * (0.28 + ev.dmg * 0.02), 1.4);
+        if (ev.exposed) {
+          fx.addFlash(0.2, t.blood);
+          fx.ring(x, y, cell * 0.2, cell * 1.1, t.blood, cell * 0.05, 520);
+        }
+        break;
+      }
+
+      case 'pickup': {
+        const [x, y] = at(ev.pos);
+        if (ev.kind === 'nib') {
+          sfx.upgrade();
+          fx.ring(x, y, cell * 0.1, cell * 1.2, t.gold, cell * 0.05, 700);
+          fx.addFlash(0.12, t.gold);
+          fx.text(x, y - cell * 0.3, 'NIB  +1', t.gold, cell * 0.24, 1.4);
+        } else {
+          sfx.pickup();
+          fx.ring(x, y, cell * 0.1, cell * 0.7, t.gold, cell * 0.035, 460);
+          fx.text(x, y - cell * 0.3, `+${ev.amount}`, t.gold, cell * 0.26, 1.2);
+        }
+        break;
+      }
+
+      case 'spill': {
+        const [x, y] = at(ev.pos);
+        sfx.spill();
+        // Ink wells up and something climbs out — thrown outward, not splashed
+        // by an impact, so it reads as arriving rather than as being hit.
+        fx.splatter(x, y, Math.random() * Math.PI * 2, 0.8, t.ink, cell);
+        fx.ring(x, y, cell * 0.7, cell * 0.16, t.ink, cell * 0.04, 460);
+        fx.addShake(cell * 0.045);
+        fx.text(x, y - cell * 0.42, 'THE PAGE FILLS', t.ink, cell * 0.17, 1);
+        break;
+      }
+
+      case 'unseal': {
+        const [x, y] = at(ev.pos);
+        sfx.unseal();
+        fx.ring(x, y, cell * 0.1, cell * 1.6, t.gold, cell * 0.05, 900);
+        fx.ring(x, y, cell * 0.1, cell * 1.0, t.gold, cell * 0.035, 620);
+        fx.addFlash(0.1, t.gold);
+        fx.text(x, y - cell * 0.5, 'THE WAY DOWN', t.gold, cell * 0.2, 1.2);
+        break;
+      }
+
+      case 'descend': {
+        sfx.descend(ev.depth);
+        this.effects.clearStains();
+        fx.addFlash(0.16, t.paper);
+        break;
+      }
+
+      case 'death': {
+        sfx.death();
+        fx.addShake(this.size * 0.02);
+        fx.addFreeze(180);
+        fx.addFlash(0.34, t.blood);
+        break;
+      }
+    }
+  }
+}

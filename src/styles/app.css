@@ -1,0 +1,503 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  /* The page runs edge to edge; the canvas wash and the chrome share one sheet. */
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The board owns the gesture surface; nothing should scroll or select. */
+.app {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  max-width: min(100vw, 46rem);
+  margin: 0 auto;
+  padding: env(safe-area-inset-top) 0.6rem env(safe-area-inset-bottom);
+  touch-action: none;
+  user-select: none;
+  overflow: hidden;
+  transition: background 220ms var(--ease);
+}
+
+/* ---------------------------------------------------------------- board -- */
+
+.stage {
+  position: relative;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+}
+
+.board {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+/* ------------------------------------------------------------------ hud -- */
+
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.35rem 0.5rem;
+  font-size: var(--hud);
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  color: var(--inkSoft);
+}
+
+.hud__slot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.hud__slot--right {
+  justify-content: flex-end;
+}
+
+.hud__depth {
+  color: var(--ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud__depth em {
+  font-style: normal;
+  font-size: 1.35em;
+  margin-left: 0.35em;
+}
+
+/* HP as ink drops — filled while you have them, hollow once spent. */
+.pips {
+  display: flex;
+  gap: 0.28rem;
+  align-items: center;
+}
+
+.pip {
+  width: 0.62rem;
+  height: 0.78rem;
+  border-radius: 60% 60% 55% 55% / 78% 78% 42% 42%;
+  background: var(--ink);
+  transform: rotate(180deg);
+  transition:
+    background 160ms var(--ease),
+    opacity 160ms var(--ease),
+    transform 220ms var(--ease);
+}
+
+.pip--empty {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.4px var(--rule);
+  opacity: 0.8;
+}
+
+.pip--low {
+  background: var(--blood);
+}
+
+@keyframes pip-throb {
+  0%,
+  100% {
+    transform: rotate(180deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.22);
+  }
+}
+
+.pips--critical .pip:not(.pip--empty) {
+  animation: pip-throb 780ms ease-in-out infinite;
+}
+
+.hud__stat {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hud__stat b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.hud__open {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------- state -- */
+
+.state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 2.1rem;
+  /* Right padding keeps the hint clear of the icon buttons. */
+  padding: 0.3rem 3.6rem 0.55rem;
+  font-size: var(--hud);
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+}
+
+.exposed {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--blood);
+  font-weight: 700;
+  position: relative;
+  padding: 0 0.15rem;
+}
+
+/* The proofreader's mark: struck through, dotted beneath. */
+.exposed span {
+  position: relative;
+}
+
+.exposed span::after {
+  content: '';
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 52%;
+  height: 2px;
+  background: var(--blood);
+}
+
+@keyframes exposed-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.exposed {
+  animation: exposed-in 140ms var(--ease);
+}
+
+.exposed__x2 {
+  font-size: 1.15em;
+}
+
+.combo {
+  display: inline-flex;
+  gap: 0.2rem;
+  align-items: center;
+  color: var(--blood);
+}
+
+.combo i {
+  display: block;
+  width: 2px;
+  height: 0.85em;
+  background: var(--blood);
+  transform: rotate(11deg);
+}
+
+.hint {
+  color: var(--ghost);
+  opacity: 0.85;
+}
+
+.warning {
+  color: var(--inkSoft);
+  font-weight: 700;
+  animation: breathe 1.1s ease-in-out infinite;
+}
+
+.spilling {
+  color: var(--ink);
+  font-weight: 700;
+  animation: breathe 900ms ease-in-out infinite;
+}
+
+/* --------------------------------------------------------------- overlay -- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1.2rem;
+  z-index: 5;
+  /* Light enough that the idle board reads through it as texture. */
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
+  backdrop-filter: blur(4px) saturate(0.92);
+  -webkit-backdrop-filter: blur(4px) saturate(0.92);
+  animation: overlay-in 260ms var(--ease);
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.panel {
+  width: 100%;
+  max-width: 26rem;
+  text-align: center;
+}
+
+/* The STET mark itself: struck through with dots beneath — "let it stand". */
+.mark {
+  position: relative;
+  display: inline-block;
+  font-size: clamp(3.2rem, 17vmin, 5.4rem);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  padding: 0 0.1em 0.16em;
+  color: var(--ink);
+}
+
+.mark__word {
+  position: relative;
+  display: inline-block;
+}
+
+.mark__word::after {
+  content: '';
+  position: absolute;
+  left: -0.04em;
+  right: 0.12em;
+  top: 0.47em;
+  height: 0.055em;
+  background: var(--ink);
+  transform: rotate(-1.4deg);
+}
+
+.mark__dots {
+  display: block;
+  font-size: 0.2em;
+  letter-spacing: 0.9em;
+  margin-top: 0.1em;
+  margin-left: 0.45em;
+  color: var(--blood);
+}
+
+.tagline {
+  margin: 0.9rem 0 0;
+  font-size: clamp(0.8rem, 3.4vmin, 0.98rem);
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  color: var(--inkSoft);
+}
+
+.rules {
+  margin: 1.5rem auto 0;
+  max-width: 23rem;
+  text-align: left;
+  font-size: clamp(0.8rem, 3.3vmin, 0.94rem);
+  line-height: 1.55;
+  color: var(--inkSoft);
+}
+
+.rules li {
+  margin: 0.5rem 0;
+}
+
+.rules b {
+  color: var(--ink);
+}
+
+.rules .warn {
+  color: var(--blood);
+  font-weight: 700;
+}
+
+.rules .good {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.press {
+  margin-top: 1.7rem;
+  font-size: var(--hud);
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.press {
+  animation: breathe 2.1s ease-in-out infinite;
+}
+
+/* ----------------------------------------------------------------- dead -- */
+
+.epitaph {
+  font-size: clamp(1.5rem, 8vmin, 2.3rem);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  margin: 0;
+  color: var(--blood);
+}
+
+.summary {
+  margin: 1.5rem auto 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.55rem 1.5rem;
+  max-width: 17rem;
+  font-size: clamp(0.8rem, 3.3vmin, 0.94rem);
+  letter-spacing: 0.06em;
+}
+
+.summary dt {
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: var(--track);
+  font-size: 0.86em;
+  color: var(--inkSoft);
+  align-self: center;
+}
+
+.summary dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 1.25em;
+  color: var(--ink);
+}
+
+.summary dd.best {
+  color: var(--gold);
+}
+
+.summary .rule {
+  grid-column: 1 / -1;
+  height: 1px;
+  background: var(--rule);
+  opacity: 0.65;
+}
+
+/* ---------------------------------------------------------------- chrome -- */
+
+/*
+ * Bottom-right, not top-right: the HUD's right slot already carries the enemy
+ * count, and two icon buttons sitting on top of it is exactly the kind of
+ * collision that reads as broken.
+ */
+.chrome {
+  position: absolute;
+  bottom: calc(env(safe-area-inset-bottom) + 0.25rem);
+  right: 0.35rem;
+  display: flex;
+  gap: 0.15rem;
+  z-index: 6;
+}
+
+.iconbtn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--inkSoft);
+  font-family: var(--serif);
+  font-size: 0.94rem;
+  line-height: 1;
+  padding: 0.4rem 0.45rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  opacity: 0.65;
+  transition:
+    opacity 140ms var(--ease),
+    color 140ms var(--ease),
+    transform 140ms var(--ease);
+}
+
+.iconbtn:hover {
+  opacity: 1;
+  color: var(--ink);
+}
+
+.iconbtn:active {
+  transform: scale(0.92);
+}
+
+.iconbtn:focus-visible {
+  outline: 2px solid var(--blood);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
+.btn {
+  appearance: none;
+  font-family: var(--serif);
+  font-size: var(--hud);
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  color: var(--paper);
+  background: var(--ink);
+  border: 0;
+  border-radius: var(--radius);
+  padding: 0.72rem 1.5rem;
+  margin-top: 1.6rem;
+  cursor: pointer;
+  transition: transform 120ms var(--ease), background 140ms var(--ease);
+}
+
+.btn:hover {
+  background: var(--blood);
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--blood);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .press,
+  .pips--critical .pip:not(.pip--empty) {
+    animation: none;
+  }
+  .overlay,
+  .exposed {
+    animation-duration: 1ms;
+  }
+}

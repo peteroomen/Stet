@@ -1,0 +1,25 @@
+/*
+ * Theme tokens. These are written by applyThemeVars() at runtime so the canvas
+ * and the React chrome are painted from one source of truth — a colour that
+ * exists only in CSS is a colour the board cannot match.
+ */
+:root {
+  --paper: #f3ecde;
+  --paperDeep: #dfd3b8;
+  --grain: #7d6b49;
+  --rule: #c6b896;
+  --ink: #1a1714;
+  --inkSoft: #5e5348;
+  --blood: #8c2f1e;
+  --gold: #a87b2c;
+  --ghost: #7e7362;
+  --danger: #8c2f1e;
+
+  --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+
+  --hud: clamp(0.68rem, 2.6vmin, 0.86rem);
+  --track: 0.16em;
+  --radius: 2px;
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
