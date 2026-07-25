@@ -150,7 +150,21 @@ export class Effects {
   }
 
   text(x: number, y: number, text: string, color: string, size: number, weight = 1): void {
-    this.texts.push({ x, y, vy: -0.035 * size, life: 0, maxLife: 780, text, color, size, weight });
+    // Rise about one glyph-height over the whole life. With the 0.994^dt damping
+    // the travelled distance is ~165x the initial velocity, so this reads as a
+    // number lifting off the tile rather than launching off the page — which is
+    // exactly what the previous value did.
+    this.texts.push({
+      x,
+      y,
+      vy: -0.006 * size,
+      life: 0,
+      maxLife: 720,
+      text,
+      color,
+      size,
+      weight,
+    });
   }
 
   ring(x: number, y: number, r0: number, r1: number, color: string, width: number, ms = 420): void {
