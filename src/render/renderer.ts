@@ -29,14 +29,37 @@ import { THEMES, type Theme, type ThemeName } from './theme';
  * Turn timing. Snappy on purpose: a whole turn resolves in about a quarter of a
  * second, so thinking time is yours and animation time is not.
  * ---------------------------------------------------------------------- */
-export const MOVE_MS = 105;
-export const BUMP_MS = 185;
-/** Fraction of a bump spent lunging out; the rest is the recovery back. */
-const BUMP_OUT = 0.42;
-const BLOCK_MS = 150;
+export const MOVE_MS = 85;
+/**
+ * A stroke's duration scales with what it was worth.
+ *
+ * Everything used to cost a flat 185 ms, which is why nothing felt explosive:
+ * contrast is the entire mechanism. A tap is over before you notice it; a blow
+ * that matters holds the page. Reach, shake and hitstop scale off the same
+ * weight, so one blow reads as one event rather than four tuned effects.
+ */
+export const STRIKE_MS = 150;
+export const STRIKE_HEAVY_MS = 300;
+export const BUMP_MS = STRIKE_MS;
+/**
+ * The shape of a lunge: snap out, HOLD at extension, settle slowly.
+ *
+ * It used to be a symmetric 42% out / 58% back, which reads as a step you took
+ * back — precisely the thing the rules say did not happen. A held extension
+ * reads as a swing. The hold also lands where the hitstop already freezes the
+ * frame, so the freeze now sustains the pose instead of interrupting the travel.
+ */
+const BUMP_OUT = 0.16;
+const BUMP_HOLD = 0.34;
+const BLOCK_MS = 130;
 const GAP_MS = 25;
 const ENEMY_MS = 135;
 const TAIL_MS = 40;
+
+/** 0 for a glancing tap, 1 for a killing blow. Drives every part of the feel. */
+export function strikeWeight(dmg: number, killed: boolean): number {
+  return clamp01((dmg - 1) / 3) * (killed ? 1 : 0.85) + (killed ? 0.35 : 0);
+}
 
 interface Motion {
   from: Vec;
@@ -44,6 +67,8 @@ interface Motion {
   t0: number;
   t1: number;
   kind: 'move' | 'bump' | 'block';
+  /** Strike weight, for bumps. See `strikeWeight`. */
+  weight: number;
 }
 
 export interface TurnAnim {
@@ -67,16 +92,21 @@ export function buildAnim(events: Ev[]): TurnAnim {
   let playerMotion: Motion | null = null;
   let playerDur = 0;
 
+  /** Set by the bump, so its cues fire against the duration that blow earned. */
+  let strikeMs = STRIKE_MS;
+
   for (const ev of events) {
     if (ev.t === 'move') {
-      playerMotion = { from: ev.from, to: ev.to, t0: 0, t1: MOVE_MS, kind: 'move' };
+      playerMotion = { from: ev.from, to: ev.to, t0: 0, t1: MOVE_MS, kind: 'move', weight: 0 };
       playerDur = Math.max(playerDur, MOVE_MS);
     } else if (ev.t === 'bump') {
-      playerMotion = { from: ev.from, to: ev.to, t0: 0, t1: BUMP_MS, kind: 'bump' };
-      playerDur = Math.max(playerDur, BUMP_MS);
+      const weight = strikeWeight(ev.dmg, ev.killed);
+      strikeMs = lerp(STRIKE_MS, STRIKE_HEAVY_MS, weight);
+      playerMotion = { from: ev.from, to: ev.to, t0: 0, t1: strikeMs, kind: 'bump', weight };
+      playerDur = Math.max(playerDur, strikeMs);
     } else if (ev.t === 'blocked') {
       const wall = { x: ev.pos.x, y: ev.pos.y };
-      playerMotion = { from: ev.pos, to: wall, t0: 0, t1: BLOCK_MS, kind: 'block' };
+      playerMotion = { from: ev.pos, to: wall, t0: 0, t1: BLOCK_MS, kind: 'block', weight: 0 };
       playerDur = Math.max(playerDur, BLOCK_MS);
     }
   }
@@ -94,11 +124,13 @@ export function buildAnim(events: Ev[]): TurnAnim {
       case 'move':
         cues.push({ at: 8, ev });
         break;
+      // Impact at full extension, at the TOP of the stroke rather than 42% into
+      // it. The hitstop fires here too, so the frame freezes on the held pose.
       case 'bump':
-        cues.push({ at: BUMP_MS * BUMP_OUT, ev });
+        cues.push({ at: strikeMs * BUMP_OUT, ev });
         break;
       case 'kill':
-        cues.push({ at: BUMP_MS * BUMP_OUT + 10, ev });
+        cues.push({ at: strikeMs * BUMP_OUT + 10, ev });
         break;
       case 'pickup':
         cues.push({ at: MOVE_MS * 0.7, ev });
@@ -113,6 +145,7 @@ export function buildAnim(events: Ev[]): TurnAnim {
           t0: eStart,
           t1: eStart + ENEMY_MS,
           kind: 'move',
+          weight: 0,
         });
         cues.push({ at: eStart + 8, ev });
         total = Math.max(total, eStart + ENEMY_MS);
@@ -174,18 +207,25 @@ function motionAt(m: Motion, clock: number): { pos: Vec; scale: number } {
     };
   }
 
-  // Bump / block: lunge out, snap back. You never arrive — that is the point.
-  const reach = m.kind === 'bump' ? 0.46 : 0.16;
+  // Bump / block: snap out, hold, settle. You never arrive — that is the point,
+  // and at the old 0.46 reach the mark travelled far enough into the gap that it
+  // read as arriving anyway. The anchor on the true tile (see drawHero) is what
+  // actually carries "you did not move"; this just stops fighting it.
+  const reach = m.kind === 'bump' ? lerp(0.22, 0.34, m.weight) : 0.14;
   let f: number;
   let scale: number;
   if (p < BUMP_OUT) {
     const q = p / BUMP_OUT;
     f = easeOutQuint(q) * reach;
-    scale = 1 + q * 0.16;
+    scale = 1 + q * 0.18;
+  } else if (p < BUMP_HOLD) {
+    // Held at full extension. This is the beat the whole stroke is built around.
+    f = reach;
+    scale = 1.18;
   } else {
-    const q = (p - BUMP_OUT) / (1 - BUMP_OUT);
+    const q = (p - BUMP_HOLD) / (1 - BUMP_HOLD);
     f = reach * (1 - easeOutCubic(q));
-    scale = 1 + (1 - q) * 0.16 - q * 0.06;
+    scale = 1 + (1 - q) * 0.18 - q * 0.07;
   }
   const dx = m.to.x - m.from.x;
   const dy = m.to.y - m.from.y;
@@ -594,6 +634,7 @@ export class Renderer {
     this.drawStairs(ctx, g, state, boil, wallClock);
     this.drawItems(ctx, g, state, boil, wallClock);
     this.drawTelegraphs(ctx, g, state, clock, anim, boil, wallClock);
+    this.drawReach(ctx, g, state, clock, anim, boil, wallClock);
     this.drawEnemies(ctx, g, state, anim, clock, boil);
     this.drawHero(ctx, g, state, anim, clock, boil, wallClock);
 
@@ -849,6 +890,59 @@ export class Renderer {
     }
   }
 
+  /**
+   * What a swipe into this tile would COST you.
+   *
+   * The game has one input verb, and it does two categorically different things:
+   * a swipe into empty paper is a step, and a swipe into a foe is a stroke that
+   * leaves you EXPOSED for the phase that follows. Nothing said which was which
+   * until after the turn had been spent. A blood tick on each side of an
+   * adjacent foe's tile says it beforehand, in the colour the game already uses
+   * for "this will hurt".
+   */
+  private drawReach(
+    ctx: CanvasRenderingContext2D,
+    g: Geometry,
+    s: GameState,
+    clock: number,
+    anim: TurnAnim,
+    boil: number,
+    wall: number,
+  ): void {
+    // Same settle gate as the telegraphs: no new advice until the turn it
+    // belongs to has finished playing out.
+    const settled = clamp01((clock - anim.total * 0.55) / 120);
+    if (settled <= 0.01) return;
+
+    const pulse = 0.5 + 0.5 * Math.sin(wall / 340);
+    const p = s.player.pos;
+
+    for (const e of s.enemies) {
+      if (Math.abs(e.pos.x - p.x) + Math.abs(e.pos.y - p.y) !== 1) continue;
+      const [ex, ey] = centerOf(g, e.pos);
+      const r = g.cell * 0.44;
+      const tick = g.cell * 0.11;
+      for (const sx of [-1, 1]) {
+        inkStroke(
+          ctx,
+          [
+            [ex + sx * r, ey - tick],
+            [ex + sx * r, ey + tick],
+          ] as Pt[],
+          {
+            color: this.theme.blood,
+            width: g.cell * 0.03,
+            seed: 8100 + e.seed + sx,
+            amp: g.cell * 0.006,
+            alpha: settled * (0.3 + pulse * 0.22),
+            boil,
+            passes: 1,
+          },
+        );
+      }
+    }
+  }
+
   private drawEnemies(
     ctx: CanvasRenderingContext2D,
     g: Geometry,
@@ -934,10 +1028,68 @@ export class Renderer {
     const m = anim.playerMotion;
     const { pos, scale } = m ? motionAt(m, clock) : { pos: s.player.pos, scale: 1 };
     const [cx, cy] = centerOf(g, pos);
+    // The tile you are ACTUALLY standing on. After a bump this is where you
+    // started, because a bump is a swing and not a step; after a move the engine
+    // has already put you at the destination, so the anchor leads you into it.
+    const [tx, ty] = centerOf(g, s.player.pos);
     const theme = this.theme;
 
-    // EXPOSED: a blood ring on the tile plus a strike through the rune. This is
-    // the proofreader's delete mark, and it is also literally what happened.
+    /* ---------------------------------------------------------------------
+     * The anchor.
+     *
+     * This is the fix for the game's worst readability bug. A strike lunges the
+     * hero out of its tile and back, and nothing at all used to be left behind —
+     * so for the length of the animation there was no mark on the page saying
+     * where you stood, the eye tracked the only hero-shaped thing on screen, and
+     * the next swipe resolved from a tile the player had stopped believing in.
+     *
+     * Four corner ticks, always drawn, brightening as the body leaves. During a
+     * stroke there are now two marks: where you are, and what you are doing.
+     * ------------------------------------------------------------------ */
+    {
+      // Only a swing lifts it. On a plain step the body is travelling toward the
+      // anchor and genuinely arrives, so there is no ambiguity to resolve and
+      // brightening it just adds a reticle the player has to learn to ignore.
+      const swinging = m !== null && m.kind !== 'move';
+      const travel = swinging
+        ? Math.abs(pos.x - s.player.pos.x) + Math.abs(pos.y - s.player.pos.y)
+        : 0;
+      const lift = clamp01(travel / 0.3);
+      const r = g.cell * 0.4;
+      const arm = g.cell * 0.12;
+      // Straight into inkStroke's own alpha: it assigns globalAlpha rather than
+      // multiplying into it, so anything set on the context here is discarded.
+      const ink = 0.16 + lift * 0.54;
+      for (const [sx, sy] of [
+        [-1, -1],
+        [1, -1],
+        [-1, 1],
+        [1, 1],
+      ]) {
+        inkStroke(
+          ctx,
+          [
+            [tx + sx * r - sx * arm, ty + sy * r],
+            [tx + sx * r, ty + sy * r],
+            [tx + sx * r, ty + sy * r - sy * arm],
+          ] as Pt[],
+          {
+            color: theme.inkSoft,
+            width: g.cell * 0.026,
+            seed: 5150 + sx * 7 + sy * 13,
+            amp: g.cell * 0.005,
+            alpha: ink,
+            boil,
+            passes: 1,
+          },
+        );
+      }
+    }
+
+    // EXPOSED: a blood ring on the TILE — state belongs to the tile, so it stays
+    // put while the body swings — plus a strike through the rune itself, which
+    // travels with it. The proofreader's delete mark, and also literally what
+    // happened.
     if (s.player.exposed) {
       const pulse = 0.5 + 0.5 * Math.sin(wall / 170);
       ctx.save();
@@ -945,7 +1097,7 @@ export class Renderer {
       ctx.strokeStyle = theme.blood;
       ctx.lineWidth = g.cell * 0.045;
       ctx.beginPath();
-      ctx.arc(cx, cy, g.cell * (0.42 + pulse * 0.03), 0, Math.PI * 2);
+      ctx.arc(tx, ty, g.cell * (0.42 + pulse * 0.03), 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
@@ -987,15 +1139,17 @@ export class Renderer {
       ctx.restore();
     }
 
-    // Combo tally — scratched marks beside the rune.
+    // Combo tally — scratched marks beside the tile. Pinned to the tile rather
+    // than the rune: it is a readout of your state, and a readout that swings
+    // around during the swing it is counting cannot be read.
     if (s.player.combo > 0) {
       for (let i = 0; i < s.player.combo; i++) {
-        const bx = cx + g.cell * 0.3 + i * g.cell * 0.07;
+        const bx = tx + g.cell * 0.3 + i * g.cell * 0.07;
         inkStroke(
           ctx,
           [
-            [bx, cy - g.cell * 0.34],
-            [bx + g.cell * 0.03, cy - g.cell * 0.18],
+            [bx, ty - g.cell * 0.34],
+            [bx + g.cell * 0.03, ty - g.cell * 0.18],
           ] as Pt[],
           {
             color: theme.blood,

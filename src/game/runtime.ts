@@ -1,6 +1,6 @@
 import { sfx } from '../audio/sfx';
 import { Effects } from '../render/effects';
-import { EMPTY_ANIM, Renderer, buildAnim, type TurnAnim } from '../render/renderer';
+import { EMPTY_ANIM, Renderer, buildAnim, strikeWeight, type TurnAnim } from '../render/renderer';
 import { applyThemeVars, type ThemeName } from '../render/theme';
 import { demoState, newGame, step } from './engine';
 import { randomSeed } from './rng';
@@ -309,9 +309,15 @@ export class Runtime {
         const [x, y] = at(ev.to);
         const [px, py] = at(ev.from);
         const ang = Math.atan2(y - py, x - px);
+        // Weight, not damage, so shake / freeze / duration / reach all move
+        // together and one blow reads as one event. The old numbers were flat —
+        // a glancing tap froze for 40 ms and a killing blow for 72, which is not
+        // enough spread for anything to feel explosive, because nothing was
+        // quiet. A tap is now over before you notice; a real blow stops the page.
+        const weight = strikeWeight(ev.dmg, ev.killed);
         sfx.strike(ev.combo, ev.killed);
-        fx.addShake(cell * (0.045 + ev.dmg * 0.016));
-        fx.addFreeze(ev.killed ? 72 : 40 + ev.combo * 6);
+        fx.addShake(cell * (0.03 + weight * 0.1));
+        fx.addFreeze(30 + weight * 90);
         // The stroke itself, as a brush arc through the target. Ink when it bit
         // deep enough to break the stance, blood when it merely landed — so the
         // most important fact about a hit is legible from its colour alone.

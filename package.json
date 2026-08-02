@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "model": "vite-node scripts/model.ts",
     "check:swipe": "vite build && node scripts/swipe-check.mjs",
-    "shots:brush": "node scripts/brush-shots.mjs"
+    "shots:brush": "node scripts/brush-shots.mjs",
+    "shots:strike": "vite build && node scripts/strike-frames.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

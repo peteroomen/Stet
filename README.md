@@ -141,6 +141,44 @@ curl. Flourishes paint themselves on over their first third rather than
 appearing whole — a mark that materialises is a shape; a mark that draws itself
 is a brush.
 
+### The anchor, and why a swing needs one
+
+A stroke lunges the hero out of its tile and back, because a bump is a swing and
+not a step. For a long time nothing was left behind — so for the length of that
+animation there was no mark anywhere on the page saying where you actually
+stood, the eye tracked the only hero-shaped thing on screen, and the next swipe
+resolved from a tile the player had stopped believing in. The `EXPOSED` ring, the
+most important state on the board, travelled with the lunge too.
+
+Now four corner ticks sit on your true tile, brightening as the body leaves and
+staying faint when it does not — a plain step has nothing to disambiguate, so
+lifting them there would only add a reticle to learn to ignore. The ring and the
+combo tally are pinned to the tile as well; only the brush mark travels. The
+lunge itself came down from 0.46 of a tile to 0.22–0.34.
+
+**Strokes are no longer all the same length.** Everything used to run 185 ms and
+freeze for 40–72 ms, which is why nothing felt explosive: contrast is the whole
+mechanism, and nothing was quiet. Duration, reach, shake and hitstop now scale
+off one weight derived from the blow.
+
+| | before | after |
+|---|---|---|
+| neutral step | 105 ms | 85 ms |
+| light stroke | 185 ms, freeze 40 | **150 ms**, freeze 34 |
+| heavy stroke or a kill | 185 ms, freeze 72 | **300 ms**, freeze 120 |
+
+Impact also moved from 42% of the way through the stroke to 16% — full
+extension, which is where the hitstop already fires, so the freeze now sustains
+the pose instead of interrupting the travel.
+
+`npm run shots:strike` photographs a stroke frame by frame at exact clock
+offsets. None of this can be checked on a live board: the whole thing is over in
+a sixth of a second and the question is what the page looks like *during* it.
+
+Adjacent foes get a blood tick on each side of their tile. The game has one input
+verb doing two categorically different things, and nothing used to say which was
+which until the turn had already been spent.
+
 Two things that cost real time to get right:
 
 - Dry-brush texture is done by **skipping** spans of the body, not by erasing
@@ -301,3 +339,7 @@ Sound is synthesized but there is no music. There is no meta-progression, no
 seed sharing, and no bestiary in-game (the per-enemy `tell` strings in
 `enemies.ts` are written and waiting for one). Duplicate enemy kinds beyond the
 four are the obvious next axis, along with a floor modifier or two.
+
+`DESIGN.md` carries the plan: shipping FLOW (a finished mechanic currently
+sitting behind a zero), a second playable hand that draws and looses at range,
+and scrolls and marginalia as a roguelike layer that never asks for an inventory.
