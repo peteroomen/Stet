@@ -5,6 +5,15 @@ import type { Rules } from './rules';
 export type Vec = { x: number; y: number };
 export type Dir = 'up' | 'down' | 'left' | 'right';
 
+/**
+ * What you can spend a turn on.
+ *
+ * `wait` holds your ground: you do not move, you do not swing, and the enemy
+ * phase runs anyway. It is gated behind `Rules.allowWait` because standing still
+ * is exactly the strategy the spill exists to punish — see rules.ts.
+ */
+export type Action = Dir | 'wait';
+
 export type EnemyKind = 'rat' | 'stalker' | 'charger' | 'warden';
 export type ItemKind = 'vial' | 'nib';
 
@@ -125,6 +134,8 @@ export interface GameState {
   floorHpRallied: number;
   /** Turns since the last spill. Reset on descent and on each spill. */
   spillClock: number;
+  /** Holds spent on this floor. See Rules.waitsPerFloor. */
+  floorWaits: number;
 }
 
 /** Which half of the turn an event belongs to — the renderer schedules from this. */
@@ -132,6 +143,7 @@ export type EvPhase = 'p' | 'e';
 
 export type Ev =
   | { t: 'blocked'; phase: EvPhase; pos: Vec; dir: Dir }
+  | { t: 'wait'; phase: EvPhase; pos: Vec }
   | { t: 'move'; phase: EvPhase; from: Vec; to: Vec; dir: Dir }
   | {
       t: 'bump';

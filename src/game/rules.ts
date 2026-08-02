@@ -57,6 +57,56 @@ export interface Rules {
   rallyPerKill: number;
   rallyFloorCap: number;
 
+  /**
+   * WAIT. You may spend a turn holding your ground — no move, no swing, and the
+   * enemy phase runs anyway.
+   *
+   * Gated rather than simply added, because standing still is precisely the
+   * strategy the spill was built to punish: a bot that read telegraphs and
+   * refused to engage once kited three rats for 4000 turns on floor one. A wait
+   * action hands that strategy a first-class verb, so it goes in front of the
+   * harness before it goes in the game.
+   *
+   * The honest case for it: waiting lets a CHARGER commit and sail past into
+   * empty paper, and lets you shed exposure without stepping into something
+   * worse. Both are reads, not stalls. The spill is what stops it being free.
+   */
+  allowWait: boolean;
+
+  /**
+   * What a hold costs on the floor clock, in turns.
+   *
+   * 1 makes holding exactly as cheap as acting, and the harness is unambiguous
+   * about where that goes: a reactive player LOSES depth (4.2 to 3.5) while a
+   * 3-ply one gains a lot (18 to 24.7), and eight runs stall out at the turn cap
+   * entirely. That is the kiting failure mode the spill was built to kill,
+   * handed a first-class verb — patience beating commitment again.
+   *
+   * Above 1, holding is still always available but never free: the page fills
+   * faster for every turn you spend not acting.
+   */
+  waitCost: number;
+
+  /**
+   * How many holds a floor grants. 0 = unlimited.
+   *
+   * Unlimited is measurably wrong, and pricing the floor clock does not save it:
+   * at cost 1, 2 and 3 a reactive player still LOSES depth (4.2 to 3.5 / 3.6 /
+   * 3.9) while a 3-ply one gains a great deal (18 to 24.7 / 26.0 / 24.2), and
+   * runs still stall out at the turn cap. A free-standing hold is a stall verb.
+   *
+   * But the hole it fixes is real and was measured too — `scripts/forced.ts`:
+   * 2.8% of turns offer NO direction that avoids damage, and in 56% of those,
+   * standing still costs nothing while every move costs health. Enemies commit
+   * to tiles, so they can surround your tile without covering it, and you are
+   * forced to walk into one of them.
+   *
+   * That is about one moment per floor. So the hold is rationed to roughly that
+   * many: enough to answer a board that has genuinely boxed you in, never enough
+   * to wait a floor out.
+   */
+  waitsPerFloor: number;
+
   /** Turns between spills once a floor's grace is spent. */
   spillBase: number;
   /**
@@ -70,7 +120,24 @@ export interface Rules {
   spillRampTurns: number;
 }
 
-/** What the game ships as today. */
+/**
+ * What the game ships as today.
+ *
+ * On the hold: it is on, and rationed to two a floor, and both halves of that
+ * were measured. Unlimited holding stalls runs outright (8 of 150 hit the turn
+ * cap) and pulls a reactive player DOWN while pushing a 3-ply one up — patience
+ * beating commitment, which is the one thing this design cannot allow. Rationed,
+ * every variant stalls zero runs and lands inside the noise of shipped:
+ *
+ *   shipped  reacting 4.2  thinking 18.0   stalled 0
+ *   wait     reacting 3.5  thinking 24.7   stalled 8
+ *   r1       reacting 4.0  thinking 19.8   stalled 0
+ *   r2       reacting 3.9  thinking 17.8   stalled 0
+ *   r3       reacting 3.7  thinking 19.5   stalled 0
+ *
+ * So it costs nothing measurable, and it buys the fix for a real hole — see
+ * `scripts/forced.ts`.
+ */
 export const SHIPPED: Rules = {
   id: 'shipped',
   label: 'Shipped — commit, stagger, spill',
@@ -82,6 +149,9 @@ export const SHIPPED: Rules = {
   flowBonus: 0,
   rallyPerKill: 0,
   rallyFloorCap: 0,
+  allowWait: true,
+  waitCost: 1,
+  waitsPerFloor: 2,
   spillBase: 5,
   spillRampTurns: 0,
 };
@@ -192,8 +262,70 @@ export const FLOW_PRESS_26 = variant({
   spillRampTurns: 26,
 });
 
+/** W: hold your ground as a first-class action. */
+export const WAIT = variant({
+  id: 'wait',
+  label: 'W · Wait — hold your ground as an action',
+  allowWait: true,
+});
+
+/**
+ * W+: wait, plus the accelerating spill.
+ *
+ * If waiting turns out to be farmable, PRESS is the obvious brake — a flat
+ * trickle is what makes standing still cheap, and the ramp is what makes
+ * lingering cost more the longer it goes on.
+ */
+/** WR: the hold as a rationed resource, sized to the measured hole. */
+export const WAIT_R1 = variant({
+  id: 'wait-r1',
+  label: 'WR1 · Wait — one hold per floor',
+  allowWait: true,
+  waitsPerFloor: 1,
+});
+export const WAIT_R2 = variant({
+  id: 'wait-r2',
+  label: 'WR2 · Wait — two holds per floor',
+  allowWait: true,
+  waitsPerFloor: 2,
+});
+export const WAIT_R3 = variant({
+  id: 'wait-r3',
+  label: 'WR3 · Wait — three holds per floor',
+  allowWait: true,
+  waitsPerFloor: 3,
+});
+
+/** W2 / W3: holding is available, but the page fills faster while you do it. */
+export const WAIT_COST2 = variant({
+  id: 'wait-c2',
+  label: 'W2 · Wait, priced — a hold costs two turns of floor clock',
+  allowWait: true,
+  waitCost: 2,
+});
+export const WAIT_COST3 = variant({
+  id: 'wait-c3',
+  label: 'W3 · Wait, priced hard — a hold costs three turns of floor clock',
+  allowWait: true,
+  waitCost: 3,
+});
+
+export const WAIT_PRESS = variant({
+  id: 'wait-press',
+  label: 'W+ · Wait + Press — holding costs more the longer you linger',
+  allowWait: true,
+  spillRampTurns: 12,
+});
+
 export const VARIANTS: Rules[] = [
   SHIPPED,
+  WAIT,
+  WAIT_R1,
+  WAIT_R2,
+  WAIT_R3,
+  WAIT_COST2,
+  WAIT_COST3,
+  WAIT_PRESS,
   NO_EXPOSURE,
   TUNED,
   MOMENTUM,

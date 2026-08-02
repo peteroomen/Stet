@@ -31,6 +31,10 @@ broken stance **braces**: it cannot be broken again until you leave it alone for
 a turn, and a heavy shrugs off anything lighter than its poise. So a big enemy is
 a rhythm — strike, step away, strike — never a lock.
 
+**You may hold.** Twice a floor, you can spend a turn standing still. It is
+rationed because it has to be — see below — and it exists because the board can
+genuinely box you in.
+
 **They commit too.** Every foe shows a ghost of exactly where it will be. That
 telegraph is computed at the end of the previous turn and executed *unchanged* —
 it is a promise, not a prediction. So a charger's two-tile lunge can be baited
@@ -39,6 +43,46 @@ arrow can be broken; a solid one is coming whatever you do.
 
 Together they make the board readable exactly one turn ahead, which is the whole
 game: not "what will happen", but "what am I willing to pay for this".
+
+## The hold, and why it is rationed
+
+Enemies commit to *tiles*. That means they can surround your tile without
+covering it — every direction steps into a committed blow while the square you
+are on is safe, and with only four moves available you are forced to walk into
+one of them.
+
+`npx vite-node scripts/forced.ts` measures how often that happens over 19,666
+turns of bot play:
+
+```
+No direction avoids damage          545  (2.8% of turns)
+  ...of those, holding is cheaper   58.9%
+  ...of those, holding is FREE      56.0%
+Every option ends the run           0.6%
+```
+
+About one moment per floor where the move set has no answer, and in more than
+half of them standing still costs nothing while all four moves cost health.
+
+But an *unlimited* hold is the strategy the spill was built to kill, handed a
+first-class verb. Measured, it is unambiguous — and pricing it on the floor clock
+does not save it either:
+
+| | reacting | thinking | stalled runs |
+|---|---|---|---|
+| shipped | **4.2** | 18.0 | 0 |
+| unlimited hold | **3.5** | 24.7 | **8** |
+| hold, costs 2 floor-turns | 3.6 | 26.0 | 5 |
+| hold, costs 3 floor-turns | 3.9 | 24.2 | 9 |
+| **two holds a floor** | **3.9** | **17.8** | **0** |
+
+Unlimited holding pulls a reactive player *down* and pushes a 3-ply one *up* —
+patience beating commitment, which is the one thing this design cannot allow —
+and stalls 8 runs of 150 against the turn cap outright. Rationed to two a floor
+it lands inside the noise of shipped on both ends and stalls nothing. So it costs
+nothing measurable and buys the fix for a real hole.
+
+`.` or space, or the button.
 
 ## The price, stated in advance
 
@@ -63,9 +107,8 @@ commit to their intents the phase that follows your move is **fully determined**
 - A blood numeral inside your own tile, against the edge you would leave by: the
   health that move costs. Ringed when it ends the run. Nothing at all when a
   direction is free.
-- A small ✗ on a foe your stroke would stop — kill it, or break the stance it
-  committed to. Its *absence* is the poise rule, learned without a number.
-- Blood pips on a foe's health row: what your next stroke takes off it.
+- Blood pips on a foe's health row: what your next stroke takes off it. Every
+  filled pip in blood means it dies.
 - A telegraph is dashed when you can break it and **solid when you cannot**. That
   used to read the enemy's stance alone, so a WARDEN you could not dent still
   advertised itself as interruptible.
@@ -188,20 +231,42 @@ curl. Flourishes paint themselves on over their first third rather than
 appearing whole — a mark that materialises is a shape; a mark that draws itself
 is a brush.
 
-### The anchor, and why a swing needs one
+### The bug that made striking unreadable
 
-A stroke lunges the hero out of its tile and back, because a bump is a swing and
-not a step. For a long time nothing was left behind — so for the length of that
-animation there was no mark anywhere on the page saying where you actually
-stood, the eye tracked the only hero-shaped thing on screen, and the next swipe
-resolved from a tile the player had stopped believing in. The `EXPOSED` ring, the
-most important state on the board, travelled with the lunge too.
+`motionAt` returned a finished motion's *destination*. For a step that is right.
+For a **bump** the destination is the tile you swung at — a tile you never
+occupied — so the moment the swing animation ended, about a third of the way
+through the turn, the hero teleported onto the foe it had just hit and stood
+there until the next input.
 
-Now four corner ticks sit on your true tile, brightening as the body leaves and
-staying faint when it does not — a plain step has nothing to disambiguate, so
-lifting them there would only add a reticle to learn to ignore. The ring and the
-combo tally are pinned to the tile as well; only the brush mark travels. The
-lunge itself came down from 0.46 of a tile to 0.22–0.34.
+The rules said "you do not advance" and the picture showed you standing on top of
+the thing you had just hit, for most of every turn you spent attacking. A bump
+now rests where it started.
+
+Four corner ticks mark your true tile *during* a swing, fading out entirely at
+rest — the body is only ever away from its tile mid-stroke, so an anchor drawn
+the rest of the time is furniture. The lunge itself came down from 0.46 of a tile
+to 0.22–0.34.
+
+### Less on the page
+
+`EXPOSED` carried **four** indicators at once: a pulsing blood ring on the tile, a
+strike through the rune, three dots beneath it, and a struck-out line in the
+chrome. For one boolean. Every one asked the player to learn a symbol and then do
+the multiplication it implied.
+
+The per-direction costs already carry the whole consequence — they are computed
+by running the turn, so a strike that would cost 3 simply reads **6**. The
+mechanism does not need a glyph when the outcome is on the board. All four went;
+one short line in the chrome names it, and goes grey when nothing can reach you.
+The combo tally went the same way: what a combo does is make your next stroke
+heavier, and that already shows as more of a foe's pips turning to blood.
+
+Two more marks were removed for cause. A ✗ beside a foe meant "your stroke stops
+this one" and was read as **"this will damage me"** — the exact opposite. A cross
+on a board means bad, or forbidden, or dead, and no amount of placement was going
+to overrule that. And the guard bracket over a braced foe meant "a stroke will
+not break this", which is now exactly what a solid telegraph says.
 
 **Strokes are no longer all the same length.** Everything used to run 185 ms and
 freeze for 40–72 ms, which is why nothing felt explosive: contrast is the whole

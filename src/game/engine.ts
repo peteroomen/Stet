@@ -3,7 +3,7 @@ import { generateFloor } from './floors';
 import { DIR_VEC, add, allTiles, chebyshev, eq, inBounds } from './grid';
 import { Rng, randomSeed } from './rng';
 import { SHIPPED, type Rules } from './rules';
-import type { Dir, Enemy, Ev, GameState, StepResult, Vec } from './types';
+import type { Action, Dir, Enemy, Ev, GameState, StepResult, Vec } from './types';
 
 /**
  * Measured, not guessed. Simulated runs at 6 / 7 / 8 HP, played by a bot with
@@ -85,6 +85,7 @@ export function newGame(seed: number = randomSeed(), rules: Rules = SHIPPED): Ga
     floorHpLost: 0,
     floorHpRallied: 0,
     spillClock: 0,
+    floorWaits: 0,
   };
   enterFloor(s, []);
   return s;
@@ -116,6 +117,7 @@ function enterFloor(d: GameState, ev: Ev[]): void {
   d.floorHpLost = 0;
   d.floorHpRallied = 0;
   d.spillClock = 0;
+  d.floorWaits = 0;
   d.chain = 0;
   d.grace = spillGrace(f.enemies.length, d.depth);
   d.stats.deepest = Math.max(d.stats.deepest, d.depth);
@@ -247,14 +249,26 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
  * Turn order — player acts, then every enemy executes the intent it committed to
  * last turn, then intents are recomputed for the next turn.
  */
-export function step(state: GameState, dir: Dir): StepResult {
+export function step(state: GameState, action: Action): StepResult {
   if (state.screen !== 'playing') return { state, events: [], spent: false };
 
   const d: GameState = structuredClone(state);
   const r = d.rules;
   const ev: Ev[] = [];
   const p = d.player;
-  p.facing = dir;
+
+  // Holding your ground. Costs a turn, sheds the swing — you spent it recovering
+  // rather than committing — and hands the floor to the enemy phase unchanged.
+  const waiting = action === 'wait';
+  if (waiting && !r.allowWait) return { state, events: [], spent: false };
+  // Out of holds for this floor. Costs nothing, exactly like a swipe into a wall
+  // — being killed by an input the board had already spent is not a fair death.
+  if (waiting && r.waitsPerFloor > 0 && d.floorWaits >= r.waitsPerFloor) {
+    return { state, events: [], spent: false };
+  }
+
+  const dir: Dir = waiting ? p.facing : action;
+  if (!waiting) p.facing = dir;
 
   // Where you stood when the turn opened, and what had committed to strike that
   // tile. Both are needed after the enemy phase to tell a dodge from a retreat.
@@ -264,14 +278,21 @@ export function step(state: GameState, dir: Dir): StepResult {
   const to = add(p.pos, DIR_VEC[dir]);
 
   // --- Player phase -------------------------------------------------------
-  if (!inBounds(to) || isBlot(d, to)) {
+  if (waiting) {
+    p.exposed = false;
+    p.combo = 0;
+    d.floorWaits += 1;
+    ev.push({ t: 'wait', phase: 'p', pos: { ...p.pos } });
+  } else if (!inBounds(to) || isBlot(d, to)) {
     // A wall costs you nothing. Being killed by a mis-swipe into stone is not
     // the kind of commitment this game is about.
     ev.push({ t: 'blocked', phase: 'p', pos: { ...p.pos }, dir });
     return { state: d, events: ev, spent: false };
   }
 
-  const target = d.enemies.find((e) => eq(e.pos, to));
+  // Waiting swings at nothing and steps nowhere; it falls straight through to
+  // the enemy phase below.
+  const target = waiting ? undefined : d.enemies.find((e) => eq(e.pos, to));
 
   if (target) {
     const bonus = Math.min(p.combo, MAX_COMBO);
@@ -342,7 +363,7 @@ export function step(state: GameState, dir: Dir): StepResult {
       }
     }
     // You do NOT advance into the tile. A bump attack is a swing, not a step.
-  } else {
+  } else if (!waiting) {
     p.exposed = false;
     p.combo = 0;
     p.pos = { ...to };
@@ -393,7 +414,9 @@ export function step(state: GameState, dir: Dir): StepResult {
     return { state: d, events: ev, spent: true };
   }
 
-  d.floorTurns += 1;
+  // A hold can cost more than an action, so patience is always priced. See
+  // Rules.waitCost — at parity the harness stalls runs outright.
+  d.floorTurns += waiting ? r.waitCost : 1;
 
   // The page fills. Checked before the clear-check so a spill on the very turn
   // you kill the last enemy keeps the floor honestly uncleared.

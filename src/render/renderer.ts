@@ -53,6 +53,8 @@ export const BUMP_MS = STRIKE_MS;
 const BUMP_OUT = 0.16;
 const BUMP_HOLD = 0.34;
 const BLOCK_MS = 130;
+/** Holding your ground. Short — nothing moved — but not zero, or it reads as a dropped input. */
+const WAIT_MS = 70;
 const GAP_MS = 25;
 const ENEMY_MS = 135;
 const TAIL_MS = 40;
@@ -105,6 +107,8 @@ export function buildAnim(events: Ev[]): TurnAnim {
       strikeMs = lerp(STRIKE_MS, STRIKE_HEAVY_MS, weight);
       playerMotion = { from: ev.from, to: ev.to, t0: 0, t1: strikeMs, kind: 'bump', weight };
       playerDur = Math.max(playerDur, strikeMs);
+    } else if (ev.t === 'wait') {
+      playerDur = Math.max(playerDur, WAIT_MS);
     } else if (ev.t === 'blocked') {
       const wall = { x: ev.pos.x, y: ev.pos.y };
       playerMotion = { from: ev.pos, to: wall, t0: 0, t1: BLOCK_MS, kind: 'block', weight: 0 };
@@ -123,6 +127,9 @@ export function buildAnim(events: Ev[]): TurnAnim {
         cues.push({ at: BLOCK_MS * 0.3, ev });
         break;
       case 'move':
+        cues.push({ at: 8, ev });
+        break;
+      case 'wait':
         cues.push({ at: 8, ev });
         break;
       // Impact at full extension, at the TOP of the stroke rather than 42% into
@@ -192,10 +199,23 @@ export function buildAnim(events: Ev[]): TurnAnim {
   };
 }
 
-/** Interpolated tile-space position for a motion at time `clock`. */
+/**
+ * Interpolated tile-space position for a motion at time `clock`.
+ *
+ * Note where a finished motion RESTS. A step ends on its destination, but a
+ * bump — and a blocked swipe — ends back where it started, because you never
+ * advanced: `m.to` is the tile you swung at, not a tile you ever occupied.
+ *
+ * Returning `m.to` unconditionally is what made striking so confusing. The
+ * moment the swing animation finished, roughly a third of the way through the
+ * turn, the hero teleported onto the foe's tile and stayed there until the next
+ * input — so the rules said "you do not advance" while the picture showed you
+ * standing on top of the thing you had just hit.
+ */
 function motionAt(m: Motion, clock: number): { pos: Vec; scale: number } {
+  const rest = m.kind === 'move' ? m.to : m.from;
   if (clock <= m.t0) return { pos: m.from, scale: 1 };
-  if (clock >= m.t1) return { pos: m.to, scale: 1 };
+  if (clock >= m.t1) return { pos: rest, scale: 1 };
   const p = (clock - m.t0) / (m.t1 - m.t0);
 
   if (m.kind === 'move') {
@@ -642,7 +662,7 @@ export class Renderer {
     this.drawItems(ctx, g, state, boil, wallClock);
     this.drawTelegraphs(ctx, g, state, clock, anim, boil, wallClock, moves);
     this.drawEnemies(ctx, g, state, anim, clock, boil, moves);
-    this.drawHero(ctx, g, state, anim, clock, boil, wallClock);
+    this.drawHero(ctx, g, state, anim, clock, boil);
     // Last, and over everything. This is now the most important information on
     // the page — a silhouette it covered would be a fair trade, and it sits on
     // tile edges rather than centres so it does not have to make one.
@@ -958,28 +978,14 @@ export class Renderer {
       // Drawn as a break mark on the foe rather than as a warning on the ones
       // you cannot stop: absence then means "this happens whatever you do",
       // which is how poise becomes learnable without ever showing a number.
-      if (m.kind === 'strike' && (m.breaks || m.kills)) {
-        // In the tile's top-right corner, small. Centred and full-size it did
-        // not annotate the foe, it obliterated it — and a big X over something
-        // reads as "do not" rather than "you can stop this", which is the
-        // opposite of what it means.
-        const [ex, ey] = centerOf(g, add(s.player.pos, v));
-        const bx = ex + g.cell * 0.31;
-        const by = ey - g.cell * 0.31;
-        const r = g.cell * (m.kills ? 0.115 : 0.095);
-        ctx.save();
-        ctx.globalAlpha = settled * (m.kills ? 0.95 : 0.6);
-        ctx.strokeStyle = theme.ink;
-        ctx.lineWidth = g.cell * (m.kills ? 0.032 : 0.024);
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(bx - r, by - r);
-        ctx.lineTo(bx + r, by + r);
-        ctx.moveTo(bx + r, by - r);
-        ctx.lineTo(bx - r, by + r);
-        ctx.stroke();
-        ctx.restore();
-      }
+      // There is no longer a mark for "your stroke stops this one".
+      //
+      // It was an ✗ beside the foe, and it was read as "this will damage me" —
+      // the exact opposite of what it said. A cross on a board game means bad,
+      // or forbidden, or dead, and no amount of placement was going to overrule
+      // that. What survives says the same thing without a symbol to learn: the
+      // foe's health pips turn to blood for the damage your stroke would do, and
+      // its telegraph is drawn solid when you cannot break it.
 
       if (m.taken <= 0) continue;
 
@@ -1058,36 +1064,16 @@ export class Renderer {
         brush: true,
       });
 
-      // Braced: its stance is set and a stroke will not break it this turn. Drawn
-      // as a guard bracket over the glyph, so the state is legible without having
-      // to trace the telegraph back to its owner.
-      if (!e.poise) {
-        const w = g.cell * 0.22;
-        const y = cy - g.cell * 0.42;
-        inkStroke(
-          ctx,
-          [
-            [cx - w, y + g.cell * 0.05],
-            [cx - w, y],
-            [cx + w, y],
-            [cx + w, y + g.cell * 0.05],
-          ] as Pt[],
-          {
-            color: this.theme.inkSoft,
-            width: g.cell * 0.03,
-            seed: e.seed + 1717,
-            amp: g.cell * 0.006,
-            alpha: 0.75,
-            boil,
-            passes: 1,
-          },
-        );
-      }
+      // The guard bracket over a braced foe is gone. It meant "a stroke will not
+      // break this", which is now exactly what a solid telegraph says — and one
+      // fact does not need two symbols on a board this small.
 
       // Health pips, so "how many more strokes" is never a memory test. They sit
       // clear of the wind-up ring (r ≈ 0.40 cell) — overlapping it made a
-      // WARDEN's remaining health read as part of the telegraph.
-      if (e.maxHp > 1) {
+      // WARDEN's remaining health read as part of the telegraph. Drawn even for
+      // a one-health RAT, so "all its pips are blood" reads as death on every
+      // foe rather than only on the ones big enough to have a row.
+      {
         const pipR = g.cell * 0.028;
         const gap = pipR * 3.1;
         const total = (e.maxHp - 1) * gap;
@@ -1119,7 +1105,6 @@ export class Renderer {
     anim: TurnAnim,
     clock: number,
     boil: number,
-    wall: number,
   ): void {
     const m = anim.playerMotion;
     const { pos, scale } = m ? motionAt(m, clock) : { pos: s.player.pos, scale: 1 };
@@ -1131,21 +1116,13 @@ export class Renderer {
     const theme = this.theme;
 
     /* ---------------------------------------------------------------------
-     * The anchor.
+     * The anchor: where you are, while the body is somewhere else.
      *
-     * This is the fix for the game's worst readability bug. A strike lunges the
-     * hero out of its tile and back, and nothing at all used to be left behind —
-     * so for the length of the animation there was no mark on the page saying
-     * where you stood, the eye tracked the only hero-shaped thing on screen, and
-     * the next swipe resolved from a tile the player had stopped believing in.
-     *
-     * Four corner ticks, always drawn, brightening as the body leaves. During a
-     * stroke there are now two marks: where you are, and what you are doing.
+     * Only drawn DURING a swing, and only for a swing. At rest it is four more
+     * marks on a page that already had too many, and a plain step needs no
+     * anchor at all because the body is travelling toward it and arrives.
      * ------------------------------------------------------------------ */
     {
-      // Only a swing lifts it. On a plain step the body is travelling toward the
-      // anchor and genuinely arrives, so there is no ambiguity to resolve and
-      // brightening it just adds a reticle the player has to learn to ignore.
       const swinging = m !== null && m.kind !== 'move';
       const travel = swinging
         ? Math.abs(pos.x - s.player.pos.x) + Math.abs(pos.y - s.player.pos.y)
@@ -1155,49 +1132,53 @@ export class Renderer {
       const arm = g.cell * 0.12;
       // Straight into inkStroke's own alpha: it assigns globalAlpha rather than
       // multiplying into it, so anything set on the context here is discarded.
-      const ink = 0.16 + lift * 0.54;
-      for (const [sx, sy] of [
-        [-1, -1],
-        [1, -1],
-        [-1, 1],
-        [1, 1],
-      ]) {
-        inkStroke(
-          ctx,
-          [
-            [tx + sx * r - sx * arm, ty + sy * r],
-            [tx + sx * r, ty + sy * r],
-            [tx + sx * r, ty + sy * r - sy * arm],
-          ] as Pt[],
-          {
-            color: theme.inkSoft,
-            width: g.cell * 0.026,
-            seed: 5150 + sx * 7 + sy * 13,
-            amp: g.cell * 0.005,
-            alpha: ink,
-            boil,
-            passes: 1,
-          },
-        );
+      const ink = lift * 0.62;
+      if (ink >= 0.02) {
+        for (const [sx, sy] of [
+          [-1, -1],
+          [1, -1],
+          [-1, 1],
+          [1, 1],
+        ]) {
+          inkStroke(
+            ctx,
+            [
+              [tx + sx * r - sx * arm, ty + sy * r],
+              [tx + sx * r, ty + sy * r],
+              [tx + sx * r, ty + sy * r - sy * arm],
+            ] as Pt[],
+            {
+              color: theme.inkSoft,
+              width: g.cell * 0.026,
+              seed: 5150 + sx * 7 + sy * 13,
+              amp: g.cell * 0.005,
+              alpha: ink,
+              boil,
+              passes: 1,
+            },
+          );
+        }
       }
     }
 
-    // EXPOSED: a blood ring on the TILE — state belongs to the tile, so it stays
-    // put while the body swings — plus a strike through the rune itself, which
-    // travels with it. The proofreader's delete mark, and also literally what
-    // happened.
-    if (s.player.exposed) {
-      const pulse = 0.5 + 0.5 * Math.sin(wall / 170);
-      ctx.save();
-      ctx.globalAlpha = 0.3 + pulse * 0.35;
-      ctx.strokeStyle = theme.blood;
-      ctx.lineWidth = g.cell * 0.045;
-      ctx.beginPath();
-      ctx.arc(tx, ty, g.cell * (0.42 + pulse * 0.03), 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
-
+    /* ---------------------------------------------------------------------
+     * Nothing here draws EXPOSED, and that is deliberate.
+     *
+     * It used to carry four indicators at once — a pulsing blood ring on the
+     * tile, a strike through the rune, three dots beneath it, and a struck-out
+     * line in the chrome — for one boolean. Every one of them was asking the
+     * player to learn a symbol and then do the arithmetic it implied.
+     *
+     * The per-direction costs already carry the whole consequence. Exposure
+     * doubles incoming damage, and the cost numerals are computed by actually
+     * running the turn, so a strike that would cost 3 simply reads 6. The
+     * mechanism does not need a glyph when the outcome is on the board, and one
+     * number beats four symbols and a multiplication.
+     *
+     * The combo tally went the same way: what a combo does is make your next
+     * stroke heavier, and that shows up as more of a foe's health pips turning
+     * to blood.
+     * ------------------------------------------------------------------ */
     drawGlyph(ctx, HERO, cx, cy, {
       color: theme.ink,
       size: g.cell * 0.58,
@@ -1207,58 +1188,6 @@ export class Renderer {
       rotation: FACING_ROTATION[s.player.facing] ?? 0,
       brush: true,
     });
-
-    if (s.player.exposed) {
-      inkStroke(
-        ctx,
-        [
-          [cx - g.cell * 0.34, cy],
-          [cx + g.cell * 0.34, cy],
-        ] as Pt[],
-        {
-          color: theme.blood,
-          width: g.cell * 0.055,
-          seed: 2222,
-          amp: g.cell * 0.012,
-          alpha: 0.95,
-          boil,
-        },
-      );
-      // The dots beneath — "stet: let it stand".
-      ctx.save();
-      ctx.fillStyle = theme.blood;
-      ctx.globalAlpha = 0.9;
-      for (let i = -1; i <= 1; i++) {
-        blobPath(ctx, cx + i * g.cell * 0.15, cy + g.cell * 0.3, g.cell * 0.022, 3300 + i, 0.3, 8, boil);
-        ctx.fill();
-      }
-      ctx.restore();
-    }
-
-    // Combo tally — scratched marks beside the tile. Pinned to the tile rather
-    // than the rune: it is a readout of your state, and a readout that swings
-    // around during the swing it is counting cannot be read.
-    if (s.player.combo > 0) {
-      for (let i = 0; i < s.player.combo; i++) {
-        const bx = tx + g.cell * 0.3 + i * g.cell * 0.07;
-        inkStroke(
-          ctx,
-          [
-            [bx, ty - g.cell * 0.34],
-            [bx + g.cell * 0.03, ty - g.cell * 0.18],
-          ] as Pt[],
-          {
-            color: theme.blood,
-            width: g.cell * 0.028,
-            seed: 4400 + i * 31,
-            amp: g.cell * 0.006,
-            alpha: 0.85,
-            boil,
-            passes: 1,
-          },
-        );
-      }
-    }
   }
 
   /** Low health darkens the page from the edges in. */

@@ -156,8 +156,8 @@ body {
   justify-content: center;
   gap: 0.6rem;
   min-height: 2.1rem;
-  /* Right padding keeps the hint clear of the icon buttons. */
-  padding: 0.3rem 3.6rem 0.55rem;
+  /* Right padding keeps the line clear of the icon buttons. */
+  padding: 0.3rem 3.2rem 0.55rem;
   font-size: var(--hud);
   letter-spacing: var(--track);
   text-transform: uppercase;
@@ -221,6 +221,34 @@ body {
 .exposed--idle span::after {
   background: var(--ghost);
   opacity: 0.55;
+}
+
+/*
+ * Hold your ground. Sits in the state line rather than over the board, because
+ * the board is the one place that has to stay readable a turn ahead.
+ */
+.holdbtn {
+  font: inherit;
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  color: var(--ghost);
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0.16rem 0.7rem;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 120ms var(--ease);
+}
+
+.holdbtn:hover:not(:disabled),
+.holdbtn:focus-visible {
+  opacity: 1;
+}
+
+.holdbtn:disabled {
+  opacity: 0.28;
+  cursor: default;
 }
 
 .combo {

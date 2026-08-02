@@ -16,7 +16,7 @@ import { newGame, step } from './engine';
 import { ORTHO, add, eq, inBounds, manhattan } from './grid';
 import { Rng } from './rng';
 import { SHIPPED, type Rules } from './rules';
-import type { Dir, GameState, Vec } from './types';
+import type { Action, Dir, GameState, Vec } from './types';
 
 export const DIRS: Dir[] = ['up', 'right', 'down', 'left'];
 
@@ -27,7 +27,17 @@ const DIR_OF: Record<string, Dir> = {
   '1,0': 'right',
 };
 
-export type Brain = (s: GameState, rng: Rng) => Dir | null;
+export type Brain = (s: GameState, rng: Rng) => Action | null;
+
+/**
+ * The actions available on this board.
+ *
+ * WAIT is only offered when the rules allow it, so every variant that leaves it
+ * off searches exactly the space it used to and its numbers stay comparable.
+ */
+export function actionsFor(s: GameState): Action[] {
+  return s.rules.allowWait ? [...DIRS, 'wait'] : DIRS;
+}
 
 /**
  * A deliberately mediocre player: walks toward the nearest enemy, hits it, takes
@@ -93,8 +103,8 @@ export function evaluate(n: GameState, depthAtStart: number): number {
 function search(s: GameState, ply: number, depthAtStart: number): number {
   if (ply === 0 || s.screen !== 'playing') return evaluate(s, depthAtStart);
   let best = -Infinity;
-  for (const dir of DIRS) {
-    const r = step(s, dir);
+  for (const act of actionsFor(s)) {
+    const r = step(s, act);
     if (!r.spent) continue;
     /*
      * A ply is one ENEMY PHASE, not one input.
@@ -122,16 +132,16 @@ function search(s: GameState, ply: number, depthAtStart: number): number {
 export function makeSearchBrain(ply: number): Brain {
   return (s, rng) => {
     let bestScore = -Infinity;
-    let best: Dir | null = null;
-    for (const dir of DIRS) {
-      const r = step(s, dir);
+    let best: Action | null = null;
+    for (const act of actionsFor(s)) {
+      const r = step(s, act);
       if (!r.spent) continue;
       // Same horizon rule as `search`: a granted free action is not a ply.
       const free = r.state.chain > s.chain;
       const score = search(r.state, free ? ply : ply - 1, s.depth) + rng.next() * 2;
       if (score > bestScore) {
         bestScore = score;
-        best = dir;
+        best = act;
       }
     }
     return best;
@@ -149,7 +159,10 @@ export function makeSearchBrain(ply: number): Brain {
 export function makeSloppyBrain(ply: number, misplay: number): Brain {
   const clean = makeSearchBrain(ply);
   return (s, rng) => {
-    if (rng.next() < misplay) return DIRS[rng.int(DIRS.length)];
+    if (rng.next() < misplay) {
+      const acts = actionsFor(s);
+      return acts[rng.int(acts.length)];
+    }
     return clean(s, rng);
   };
 }
@@ -196,9 +209,9 @@ export function playRun(
   let floorDamage = 0;
 
   while (s.screen === 'playing' && turns < maxTurns) {
-    const dir = brain(s, rng);
-    if (!dir) break;
-    const r = step(s, dir);
+    const act = brain(s, rng);
+    if (!act) break;
+    const r = step(s, act);
     if (!r.spent) {
       stalled++;
       if (stalled > 40) break; // bot wedged against a wall, not a game bug

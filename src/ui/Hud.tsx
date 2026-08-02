@@ -53,39 +53,47 @@ export function Hud({ hud }: { hud: HudData }) {
  * needs to know, so it gets the loudest treatment the chrome has — set as the
  * proofreader's delete mark, struck through, which is also what it means.
  */
-export function StateLine({ hud }: { hud: HudData }) {
+export function StateLine({ hud, onWait }: { hud: HudData; onWait?: () => void }) {
   // Priority order is the order these matter in: what is happening to you right
   // now, then what is about to, then how to play.
   let body;
   if (hud.exposed) {
-    // Exposure only costs you anything when something is actually committed to
-    // reaching you. Shouting identically in both cases is what made the rule
-    // feel arbitrary — so the loud version names the price, and the harmless
-    // version says so outright.
+    // The board no longer draws exposure at all — the per-direction costs are
+    // computed by running the turn, so a strike that would cost 3 simply reads
+    // 6. This line is the only place the mechanism is named, and it goes quiet
+    // when nothing is committed to reaching you, because then it is free.
     body = (
       <span className={hud.inDanger ? 'exposed' : 'exposed exposed--idle'}>
         <span>Mid-swing</span>
-        <span className="exposed__x2">{hud.inDanger ? 'incoming ×2' : 'nothing in reach'}</span>
-        {hud.combo > 0 && (
-          <span className="combo" aria-label={`combo ${hud.combo}`}>
-            {Array.from({ length: hud.combo }, (_, i) => (
-              <i key={i} />
-            ))}
-          </span>
-        )}
+        {hud.inDanger && <span className="exposed__x2">×2</span>}
       </span>
     );
   } else if (hud.spilling) {
     body = <span className="spilling">The page is filling</span>;
   } else if (hud.graceLeft <= 4 && hud.enemiesLeft > 0) {
     body = <span className="warning">The ink is rising · {hud.graceLeft}</span>;
+  } else if (hud.depth === 1) {
+    // Only on the first floor. It is a tutorial string, not a readout, and a
+    // permanent line of instruction is one more thing on a screen that had too
+    // much on it — it also wrapped into the Hold button on a narrow phone.
+    body = <span className="hint">Bump a foe to strike it</span>;
   } else {
-    body = <span className="hint">Swipe to step · bump to strike</span>;
+    body = null;
   }
 
   return (
-    <div className="state" aria-live="polite">
-      {body}
+    <div className="state">
+      <span aria-live="polite">{body}</span>
+      {hud.canWait && (
+        <button
+          className="holdbtn"
+          onClick={onWait}
+          disabled={hud.waitsLeft === 0}
+          title="Hold your ground (space or .)"
+        >
+          Hold{Number.isFinite(hud.waitsLeft) && ` ×${hud.waitsLeft}`}
+        </button>
+      )}
     </div>
   );
 }

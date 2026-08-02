@@ -114,6 +114,67 @@ measured — it hands the player one ply, and one ply is worth depth 4 against
 
 ---
 
+## Phase 1b — less on the page, and the bug underneath it
+
+Two rounds of feedback said the same thing twice: still confusing, too much on
+screen. Both were right, and the second round found the actual cause of the
+first.
+
+### The bug
+
+`motionAt` returned a finished motion's *destination*. For a step that is
+correct. For a **bump** the destination is the tile you swung at — one you never
+occupied — so the instant the swing animation ended, about a third of the way
+into the turn, the hero teleported onto the foe it had just hit and stayed there
+until the next input.
+
+That is the original complaint, verbatim: "you strike without moving, but your
+character does visibly move." It was not the lunge. The lunge is 0.34 of a tile;
+this was a full one, and it persisted for most of every attacking turn. The
+anchor added in Phase 1 made it *visible* — the corner ticks and the glyph
+ending up a tile apart is what showed it — without fixing it.
+
+Worth noting how it was found: not by reading the code, but from a screenshot,
+by measuring that the gap between the glyph and its anchor was larger than the
+maximum reach allows.
+
+### What came off the board
+
+`EXPOSED` had four indicators for one boolean — a pulsing ring, a strike through
+the rune, three dots, and a line in the chrome. The per-direction costs already
+carry its entire consequence, because they are computed by running the turn: a
+strike that would cost 3 reads 6. A mechanism does not need a glyph when its
+outcome is on the board. All four went; one short line names it and greys out
+when nothing can reach you.
+
+The ✗ meaning "your stroke stops this one" was read as **"this will damage me"**
+— the exact opposite. That is not a placement problem. A cross on a board means
+bad, forbidden, or dead, and the fix is to delete it, not to move it. The guard
+bracket over a braced foe went too: it meant "a stroke will not break this",
+which is now precisely what a solid telegraph says.
+
+The anchor now draws only *during* a swing. At rest the body is on its own tile
+and there is nothing to disambiguate.
+
+### The hold
+
+Asked for as a roguelike staple; justified by a claim that turned out to be
+measurable and true — "there are situations you can't avoid damage."
+
+`scripts/forced.ts` plays 19,666 bot turns and asks, each turn, whether any
+direction avoids damage. 2.8% of turns: none does. Of those, holding is free
+56% of the time. Enemies commit to *tiles*, so they can surround your tile
+without covering it, and four moves is not enough to escape.
+
+Unlimited holding is still wrong — reacting 4.2 → 3.5, thinking 18 → 24.7, and
+8 runs of 150 stalling against the turn cap. Pricing it on the floor clock does
+not save it at 2 or 3 turns either. Rationing it does: two a floor is inside the
+noise of shipped on both ends, stalls nothing, and covers the measured rate of
+roughly one forced-damage moment per floor.
+
+The general lesson, which is the same one the spill taught: on this board a
+verb that makes patience cheap has to be bounded by construction, not priced.
+
 ## Phase 2 — ship FLOW
 
 `flowBonus` is a finished mechanic sitting behind a zero. It is wired end to end

@@ -15,6 +15,7 @@ import type { Dir, Ev } from '../game/types';
 describe('the turn timeline schedules everything', () => {
   const ALL_EVENTS: Ev['t'][] = [
     'blocked',
+    'wait',
     'move',
     'bump',
     'kill',
@@ -35,6 +36,7 @@ describe('the turn timeline schedules everything', () => {
     const to = { x: 2, y: 1 };
     const samples: Record<Ev['t'], Ev> = {
       blocked: { t: 'blocked', phase: 'p', pos: at, dir: 'left' },
+      wait: { t: 'wait', phase: 'p', pos: at },
       move: { t: 'move', phase: 'p', from: at, to, dir: 'right' },
       bump: {
         t: 'bump',

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Runtime, type Hud as HudData } from './game/runtime';
-import type { Dir } from './game/types';
+import type { Action } from './game/types';
 import { useControls } from './input/useControls';
 import type { ThemeName } from './render/theme';
 import { Hud, StateLine } from './ui/Hud';
@@ -36,8 +36,8 @@ export default function App() {
 
   const screen = hud?.screen ?? 'title';
 
-  const onDir = useCallback((dir: Dir) => {
-    runtimeRef.current?.input(dir);
+  const onDir = useCallback((act: Action) => {
+    runtimeRef.current?.input(act);
   }, []);
 
   const onConfirm = useCallback(() => {
@@ -106,7 +106,7 @@ export default function App() {
       </div>
 
       {hud && screen === 'playing' ? (
-        <StateLine hud={hud} />
+        <StateLine hud={hud} onWait={() => runtimeRef.current?.input('wait')} />
       ) : (
         <div className="state" aria-hidden="true" />
       )}

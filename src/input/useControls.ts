@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { Dir } from '../game/types';
+import type { Action, Dir } from '../game/types';
 
 /** Pixels of travel before a drag counts as a swipe. */
 const THRESHOLD = 22;
@@ -65,7 +65,7 @@ const KEY_MAP: Record<string, Dir> = {
 };
 
 export interface ControlHandlers {
-  onDir: (dir: Dir) => void;
+  onDir: (act: Action) => void;
   onConfirm: () => void;
   onGesture?: () => void;
   enabled?: boolean;
@@ -90,6 +90,15 @@ export function useControls(
         e.preventDefault();
         onGesture?.();
         if (enabled) onDir(dir);
+        return;
+      }
+      // Hold your ground. '.' is the roguelike convention; space is the one
+      // people try first. Enter still confirms, so the title and death screens
+      // are unaffected.
+      if (enabled && (e.key === '.' || e.key === ' ')) {
+        e.preventDefault();
+        onGesture?.();
+        onDir('wait');
         return;
       }
       if (e.key === 'Enter' || e.key === ' ' || e.key === 'r' || e.key === 'R') {

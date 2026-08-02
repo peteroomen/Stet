@@ -5,7 +5,7 @@ import { applyThemeVars, type ThemeName } from '../render/theme';
 import { demoState, newGame, step } from './engine';
 import { previewMoves, underThreat, type MoveOutcome } from './preview';
 import { randomSeed } from './rng';
-import type { Dir, Ev, GameState } from './types';
+import type { Action, Ev, GameState } from './types';
 
 /**
  * Accept the next input once the turn is this far through. Buffering a swipe
@@ -25,6 +25,10 @@ export interface Hud {
   maxHp: number;
   dmg: number;
   exposed: boolean;
+  /** Whether HOLD is offered at all. See Rules.allowWait.  */
+  canWait: boolean;
+  /** Holds left on this floor; Infinity when the rules do not ration them. */
+  waitsLeft: number;
   /**
    * Exposed AND something is committed to a blow that lands on you.
    *
@@ -53,6 +57,9 @@ function hudOf(s: GameState, best: number): Hud {
     maxHp: s.player.maxHp,
     dmg: s.player.dmg,
     exposed: s.player.exposed,
+    canWait: s.rules.allowWait,
+    waitsLeft:
+      s.rules.waitsPerFloor > 0 ? Math.max(0, s.rules.waitsPerFloor - s.floorWaits) : Infinity,
     inDanger: s.player.exposed && underThreat(s),
     combo: s.player.combo,
     enemiesLeft: s.enemies.length,
@@ -84,7 +91,7 @@ export class Runtime {
   private wall = 0;
   private last = 0;
   private raf = 0;
-  private queued: Dir | null = null;
+  private queued: Action | null = null;
   private size = 0;
   private running = false;
 
@@ -170,19 +177,20 @@ export class Runtime {
     this.pushHud();
   }
 
-  /** Feed a direction. Buffers if a turn is still resolving. */
-  input(dir: Dir): void {
+  /** Feed an action. Buffers if a turn is still resolving. */
+  input(act: Action): void {
     if (this.state.screen !== 'playing') return;
+    if (act === 'wait' && !this.state.rules.allowWait) return;
     if (this.clock < this.anim.total * EARLY) {
-      this.queued = dir;
+      this.queued = act;
       return;
     }
-    this.resolve(dir);
+    this.resolve(act);
   }
 
-  private resolve(dir: Dir): void {
+  private resolve(act: Action): void {
     const before = this.state.depth;
-    const r = step(this.state, dir);
+    const r = step(this.state, act);
     this.state = r.state;
     this.anim = buildAnim(r.events);
     this.clock = 0;
@@ -304,7 +312,7 @@ export class Runtime {
     }
 
     if (this.queued && this.clock >= this.anim.total * EARLY) {
-      const d = this.queued;
+      const d: Action = this.queued;
       this.queued = null;
       this.resolve(d);
     }
@@ -328,6 +336,13 @@ export class Runtime {
       case 'move':
         sfx.step();
         break;
+
+      case 'wait': {
+        // Quieter than a step, because nothing moved. It still needs a sound:
+        // an input that produces silence reads as an input that was dropped.
+        sfx.ui();
+        break;
+      }
 
       case 'blocked': {
         sfx.blocked();

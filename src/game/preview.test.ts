@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newGame } from './engine';
+import { newGame, step } from './engine';
 import { previewMoves, underThreat } from './preview';
 import type { Enemy, EnemyKind, GameState, Vec } from './types';
 
@@ -176,5 +176,74 @@ describe('exposure only matters when something can reach you', () => {
       ],
     });
     expect(underThreat(s)).toBe(true);
+  });
+});
+
+describe('holding your ground', () => {
+  const held = (over: Partial<GameState> = {}): GameState => {
+    const b = board(over);
+    return { ...b, rules: { ...b.rules, allowWait: true, waitsPerFloor: 2 } };
+  };
+
+  it('is rejected outright under a variant that does not allow it', () => {
+    const b = board();
+    const r = step({ ...b, rules: { ...b.rules, allowWait: false } }, 'wait');
+    expect(r.spent).toBe(false);
+    expect(r.events).toHaveLength(0);
+  });
+
+  it('spends a turn and hands the floor to the enemy phase', () => {
+    const s = held({
+      enemies: [
+        enemy(1, 'rat', { x: 4, y: 2 }, { intent: { kind: 'move', path: [{ x: 3, y: 2 }] } }),
+      ],
+    });
+    const r = step(s, 'wait');
+    expect(r.spent).toBe(true);
+    expect(r.events.some((e) => e.t === 'wait')).toBe(true);
+    expect(r.state.player.pos).toEqual({ x: 2, y: 2 });
+    expect(r.state.enemies[0].pos).toEqual({ x: 3, y: 2 });
+  });
+
+  it('sheds the swing, so the blow that lands is not doubled', () => {
+    const base = held({
+      enemies: [
+        enemy(1, 'rat', { x: 3, y: 2 }, { intent: { kind: 'move', path: [{ x: 2, y: 2 }] } }),
+      ],
+    });
+    const s = { ...base, player: { ...base.player, exposed: true } };
+    const r = step(s, 'wait');
+    expect(r.state.player.exposed).toBe(false);
+    expect(r.state.stats.damageTaken).toBe(1); // not 2
+  });
+
+  /**
+   * The hole this exists for. Measured at 2.8% of turns in scripts/forced.ts, and
+   * in 56% of those, standing still is free while every direction costs health.
+   */
+  it('answers a board where every direction costs health', () => {
+    const s = held({
+      enemies: [
+        // Committed to the four tiles AROUND the player, but not onto it.
+        enemy(1, 'rat', { x: 2, y: 0 }, { intent: { kind: 'move', path: [{ x: 2, y: 1 }] } }),
+        enemy(2, 'rat', { x: 2, y: 4 }, { intent: { kind: 'move', path: [{ x: 2, y: 3 }] } }),
+        enemy(3, 'rat', { x: 0, y: 2 }, { intent: { kind: 'move', path: [{ x: 1, y: 2 }] } }),
+        enemy(4, 'rat', { x: 4, y: 2 }, { intent: { kind: 'move', path: [{ x: 3, y: 2 }] } }),
+      ],
+    });
+    expect(previewMoves(s).every((m) => !m.legal || m.taken > 0)).toBe(true);
+    expect(step(s, 'wait').state.stats.damageTaken).toBe(0);
+  });
+
+  it('is rationed per floor, and a spent budget costs no turn', () => {
+    let s = held();
+    for (let i = 0; i < 2; i++) {
+      const r = step(s, 'wait');
+      expect(r.spent).toBe(true);
+      s = r.state;
+    }
+    const denied = step(s, 'wait');
+    expect(denied.spent).toBe(false);
+    expect(denied.state.turn).toBe(s.turn);
   });
 });
