@@ -1,5 +1,6 @@
 import { ENEMY_STATS, intentThreatens } from '../game/enemies';
-import { SIZE } from '../game/grid';
+import { DIR_VEC, SIZE, add } from '../game/grid';
+import type { MoveOutcome } from '../game/preview';
 import type { Ev, GameState, Vec } from '../game/types';
 import { Effects } from './effects';
 import {
@@ -585,7 +586,13 @@ export class Renderer {
     clearGlyphCache();
   }
 
-  draw(state: GameState, anim: TurnAnim, clock: number, wallClock: number): void {
+  draw(
+    state: GameState,
+    anim: TurnAnim,
+    clock: number,
+    wallClock: number,
+    moves: MoveOutcome[] = [],
+  ): void {
     const ctx = this.canvas.getContext('2d');
     if (!ctx) return;
 
@@ -633,10 +640,13 @@ export class Renderer {
     this.drawBlots(ctx, g, state, boil);
     this.drawStairs(ctx, g, state, boil, wallClock);
     this.drawItems(ctx, g, state, boil, wallClock);
-    this.drawTelegraphs(ctx, g, state, clock, anim, boil, wallClock);
-    this.drawReach(ctx, g, state, clock, anim, boil, wallClock);
-    this.drawEnemies(ctx, g, state, anim, clock, boil);
+    this.drawTelegraphs(ctx, g, state, clock, anim, boil, wallClock, moves);
+    this.drawEnemies(ctx, g, state, anim, clock, boil, moves);
     this.drawHero(ctx, g, state, anim, clock, boil, wallClock);
+    // Last, and over everything. This is now the most important information on
+    // the page — a silhouette it covered would be a fair trade, and it sits on
+    // tile edges rather than centres so it does not have to make one.
+    this.drawCosts(ctx, g, state, clock, anim, moves);
 
     this.effects.drawRings(ctx);
     this.effects.drawDrops(ctx);
@@ -800,6 +810,7 @@ export class Renderer {
     anim: TurnAnim,
     boil: number,
     wall: number,
+    moves: MoveOutcome[],
   ): void {
     // Hide telegraphs while the turn they belong to is still resolving,
     // otherwise the new plan appears before the old one has finished playing.
@@ -808,6 +819,23 @@ export class Renderer {
 
     const theme = this.theme;
     const pulse = 0.5 + 0.5 * Math.sin(wall / 300);
+
+    // Which foes your stroke could actually stop this turn.
+    //
+    // Dashed has always meant "breakable" and solid "happening regardless", but
+    // it was reading the enemy's stance alone — so a WARDEN you cannot dent for
+    // want of three damage still advertised itself as interruptible. Where you
+    // are in reach and therefore actually deciding, the line now tells the truth
+    // about YOUR stroke. Out of reach it keeps its old meaning, which is the
+    // enemy's stance, because nothing you do this turn can change it anyway.
+    const stoppable = new Set<string>();
+    const inReach = new Set<string>();
+    for (const m of moves) {
+      if (!m.legal || m.kind !== 'strike') continue;
+      const t = add(s.player.pos, DIR_VEC[m.dir]);
+      inReach.add(`${t.x},${t.y}`);
+      if (m.breaks || m.kills) stoppable.add(`${t.x},${t.y}`);
+    }
 
     for (const e of s.enemies) {
       const intent = e.intent;
@@ -834,10 +862,11 @@ export class Renderer {
       const dest = intent.path[intent.path.length - 1];
       const [dx, dy] = centerOf(g, dest);
 
-      // A braced enemy (poise already spent) cannot be interrupted this turn, so
-      // its path is drawn SOLID and heavier: this one is going to happen, and no
-      // stroke of yours will stop it. Dashed means "breakable".
-      const braced = !e.poise;
+      // Drawn SOLID and heavier when no stroke of yours will stop it this turn —
+      // either its stance is already braced, or it is standing next to you and
+      // your blow is too light for its poise. Dashed means "you can break this".
+      const key = `${e.pos.x},${e.pos.y}`;
+      const braced = !e.poise || (inReach.has(key) && !stoppable.has(key));
 
       // The committed path.
       const pts: Pt[] = [[ex, ey]];
@@ -891,55 +920,104 @@ export class Renderer {
   }
 
   /**
-   * What a swipe into this tile would COST you.
+   * What each of your four moves costs, stated before you spend the turn.
    *
-   * The game has one input verb, and it does two categorically different things:
-   * a swipe into empty paper is a step, and a swipe into a foe is a stroke that
-   * leaves you EXPOSED for the phase that follows. Nothing said which was which
-   * until after the turn had been spent. A blood tick on each side of an
-   * adjacent foe's tile says it beforehand, in the colour the game already uses
-   * for "this will hurt".
+   * The game claimed to be readable one turn ahead and was not. Telegraphs are
+   * coloured against the tile you are STANDING ON, so for the three directions
+   * where you would move, the board answered a different question than the one
+   * being asked — a grey path can run straight through the tile you are about to
+   * step into. And a stroke's outcome needed arithmetic over three numbers, one
+   * of which (poiseBreak) appeared nowhere in the game at all.
+   *
+   * These figures are not estimates. `previewMoves` plays each direction on a
+   * throwaway copy of the state, and because enemies commit to their intents the
+   * phase that follows your move is fully determined. It is what will happen.
    */
-  private drawReach(
+  private drawCosts(
     ctx: CanvasRenderingContext2D,
     g: Geometry,
     s: GameState,
     clock: number,
     anim: TurnAnim,
-    boil: number,
-    wall: number,
+    moves: MoveOutcome[],
   ): void {
-    // Same settle gate as the telegraphs: no new advice until the turn it
-    // belongs to has finished playing out.
+    if (moves.length === 0) return;
+    // Same settle gate as the telegraphs: no advice about the next turn until
+    // the one it belongs to has finished playing out.
     const settled = clamp01((clock - anim.total * 0.55) / 120);
     if (settled <= 0.01) return;
 
-    const pulse = 0.5 + 0.5 * Math.sin(wall / 340);
-    const p = s.player.pos;
+    const [px, py] = centerOf(g, s.player.pos);
+    const theme = this.theme;
 
-    for (const e of s.enemies) {
-      if (Math.abs(e.pos.x - p.x) + Math.abs(e.pos.y - p.y) !== 1) continue;
-      const [ex, ey] = centerOf(g, e.pos);
-      const r = g.cell * 0.44;
-      const tick = g.cell * 0.11;
-      for (const sx of [-1, 1]) {
-        inkStroke(
-          ctx,
-          [
-            [ex + sx * r, ey - tick],
-            [ex + sx * r, ey + tick],
-          ] as Pt[],
-          {
-            color: this.theme.blood,
-            width: g.cell * 0.03,
-            seed: 8100 + e.seed + sx,
-            amp: g.cell * 0.006,
-            alpha: settled * (0.3 + pulse * 0.22),
-            boil,
-            passes: 1,
-          },
-        );
+    for (const m of moves) {
+      if (!m.legal) continue;
+      const v = DIR_VEC[m.dir];
+
+      /* --- your stroke stops this one ---------------------------------- */
+      // Drawn as a break mark on the foe rather than as a warning on the ones
+      // you cannot stop: absence then means "this happens whatever you do",
+      // which is how poise becomes learnable without ever showing a number.
+      if (m.kind === 'strike' && (m.breaks || m.kills)) {
+        // In the tile's top-right corner, small. Centred and full-size it did
+        // not annotate the foe, it obliterated it — and a big X over something
+        // reads as "do not" rather than "you can stop this", which is the
+        // opposite of what it means.
+        const [ex, ey] = centerOf(g, add(s.player.pos, v));
+        const bx = ex + g.cell * 0.31;
+        const by = ey - g.cell * 0.31;
+        const r = g.cell * (m.kills ? 0.115 : 0.095);
+        ctx.save();
+        ctx.globalAlpha = settled * (m.kills ? 0.95 : 0.6);
+        ctx.strokeStyle = theme.ink;
+        ctx.lineWidth = g.cell * (m.kills ? 0.032 : 0.024);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(bx - r, by - r);
+        ctx.lineTo(bx + r, by + r);
+        ctx.moveTo(bx + r, by - r);
+        ctx.lineTo(bx - r, by + r);
+        ctx.stroke();
+        ctx.restore();
       }
+
+      if (m.taken <= 0) continue;
+
+      /* --- what it costs you ------------------------------------------- */
+      // INSIDE your own tile, hard against the edge you would leave by. These
+      // are your four options, not properties of your neighbours, and putting
+      // them on the neighbours meant colliding with whatever already lived
+      // there — health pips, telegraphs, the break mark above.
+      const cx = px + v.x * g.cell * 0.38;
+      const cy = py + v.y * g.cell * 0.38;
+      const size = g.cell * (m.lethal ? 0.25 : 0.19);
+
+      ctx.save();
+      ctx.globalAlpha = settled;
+      // A move that ends the run gets the paper cleared out from under it, so it
+      // cannot be lost against a foe or a telegraph behind it.
+      ctx.fillStyle = theme.paper;
+      ctx.globalAlpha = settled * 0.82;
+      ctx.beginPath();
+      ctx.arc(cx, cy, size * 0.78, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = settled;
+      ctx.fillStyle = theme.blood;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `700 ${Math.round(size)}px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`;
+      ctx.fillText(String(m.taken), cx, cy + size * 0.04);
+
+      if (m.lethal) {
+        ctx.globalAlpha = settled * 0.9;
+        ctx.strokeStyle = theme.blood;
+        ctx.lineWidth = g.cell * 0.028;
+        ctx.beginPath();
+        ctx.arc(cx, cy, size * 0.86, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
   }
 
@@ -950,7 +1028,18 @@ export class Renderer {
     anim: TurnAnim,
     clock: number,
     boil: number,
+    moves: MoveOutcome[],
   ): void {
+    // How much a stroke into each foe would take off it, so "will this kill it"
+    // stops being arithmetic over a number the game never showed you.
+    const incoming = new Map<string, MoveOutcome>();
+    for (const m of moves) {
+      if (m.legal && m.kind === 'strike') {
+        const t = add(s.player.pos, DIR_VEC[m.dir]);
+        incoming.set(`${t.x},${t.y}`, m);
+      }
+    }
+
     for (const e of s.enemies) {
       const m = anim.enemyMotions.get(e.id);
       const at = m ? motionAt(m, clock).pos : e.pos;
@@ -1003,11 +1092,18 @@ export class Renderer {
         const gap = pipR * 3.1;
         const total = (e.maxHp - 1) * gap;
         const py = cy + g.cell * 0.47;
+        // Pips your next stroke would take off, marked in blood. Reading "5 down
+        // to 2" off the row it already lives on beats a floating number, and a
+        // kill is unmistakable because every filled pip is struck.
+        const hit = incoming.get(`${e.pos.x},${e.pos.y}`);
+        const doomed = hit ? Math.max(0, e.hp - hit.dealt) : e.hp;
         for (let i = 0; i < e.maxHp; i++) {
           const px = cx - total / 2 + i * gap;
+          const alive = i < e.hp;
+          const taken = alive && i >= doomed;
           ctx.save();
-          ctx.globalAlpha = i < e.hp ? 0.85 : 0.22;
-          ctx.fillStyle = this.theme.ink;
+          ctx.globalAlpha = alive ? 0.85 : 0.22;
+          ctx.fillStyle = taken ? this.theme.blood : this.theme.ink;
           blobPath(ctx, px, py, pipR, e.seed + i * 53, 0.35, 8, boil);
           ctx.fill();
           ctx.restore();

@@ -40,6 +40,53 @@ arrow can be broken; a solid one is coming whatever you do.
 Together they make the board readable exactly one turn ahead, which is the whole
 game: not "what will happen", but "what am I willing to pay for this".
 
+## The price, stated in advance
+
+That readability was a claim the board did not honour, for two structural
+reasons rather than cosmetic ones.
+
+**Telegraphs are coloured against the tile you are standing on.** So for the
+three directions where you would *move*, the board was answering a different
+question than the one being asked — a grey path can run straight through the
+tile you are about to step into, and nothing said so.
+
+**A stroke's outcome needed arithmetic over three numbers, one of which was
+never shown.** `poiseBreak` — the damage a blow must carry to stop a given kind —
+appeared only in `enemies.ts` and in the table above. Nothing in the game could
+tell you a WARDEN shrugs off anything under 3.
+
+So each of the four directions now carries its price. `previewMoves` in
+`preview.ts` plays every direction on a throwaway copy of the state and reads off
+what happened. These are not estimates: `step()` is pure, and because enemies
+commit to their intents the phase that follows your move is **fully determined**.
+
+- A blood numeral inside your own tile, against the edge you would leave by: the
+  health that move costs. Ringed when it ends the run. Nothing at all when a
+  direction is free.
+- A small ✗ on a foe your stroke would stop — kill it, or break the stance it
+  committed to. Its *absence* is the poise rule, learned without a number.
+- Blood pips on a foe's health row: what your next stroke takes off it.
+- A telegraph is dashed when you can break it and **solid when you cannot**. That
+  used to read the enemy's stance alone, so a WARDEN you could not dent still
+  advertised itself as interruptible.
+
+Worked example, from `npm run shots:strike`: a WARDEN committed to your tile, a
+RAT beside you, a CHARGER lunging across the row below. Swiping into the rat
+*kills it* — and costs **6 of your 7 health**, because you do not advance, you
+are mid-swing, and the warden's blow doubles. There was previously no way to know
+that before paying for it.
+
+**Does this give the game away?** It hands you exactly what the `reacting` bot
+has — one ply, the consequence of its own move, nothing further — and that bot
+reaches median depth 4 against `thinking`'s 18. The entire remaining gap is
+multi-turn planning, which a preview does not provide. It raises the floor
+without touching the ceiling.
+
+It is also the one change here the harness **cannot** measure, and that is worth
+saying plainly rather than dressing up: bots already compute all of this
+internally. What changed is the gap between what a bot knows and what a human can
+see, and `npm run model` is blind to exactly that.
+
 ## The floor
 
 Clear every foe to break the wax seal on the stairs. The stairs are visible from
@@ -175,9 +222,9 @@ the pose instead of interrupting the travel.
 offsets. None of this can be checked on a live board: the whole thing is over in
 a sixth of a second and the question is what the page looks like *during* it.
 
-Adjacent foes get a blood tick on each side of their tile. The game has one input
-verb doing two categorically different things, and nothing used to say which was
-which until the turn had already been spent.
+The game has one input verb doing two categorically different things, and nothing
+used to say which was which until the turn had already been spent. That is now
+the per-direction price above, not a mark that merely says "a foe is here".
 
 Two things that cost real time to get right:
 

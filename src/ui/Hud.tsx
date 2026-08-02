@@ -58,10 +58,14 @@ export function StateLine({ hud }: { hud: HudData }) {
   // now, then what is about to, then how to play.
   let body;
   if (hud.exposed) {
+    // Exposure only costs you anything when something is actually committed to
+    // reaching you. Shouting identically in both cases is what made the rule
+    // feel arbitrary — so the loud version names the price, and the harmless
+    // version says so outright.
     body = (
-      <span className="exposed">
-        <span>Exposed</span>
-        <span className="exposed__x2">×2</span>
+      <span className={hud.inDanger ? 'exposed' : 'exposed exposed--idle'}>
+        <span>Mid-swing</span>
+        <span className="exposed__x2">{hud.inDanger ? 'incoming ×2' : 'nothing in reach'}</span>
         {hud.combo > 0 && (
           <span className="combo" aria-label={`combo ${hud.combo}`}>
             {Array.from({ length: hud.combo }, (_, i) => (

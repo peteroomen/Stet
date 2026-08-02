@@ -72,11 +72,45 @@ These are eyeball numbers, not measured ones — the bot harness cannot feel
 anything, so this is the one part of the project that is tuned by looking at it.
 `node scripts/shots.mjs` captures the states worth checking.
 
-### And a tell before you commit
+### The part that actually mattered
 
-Adjacent enemies get a faint blood-tinted bracket on their tile: *swiping here is
-a strike, not a step*. The one categorical difference in the game's single input
-verb is now visible **before** you spend the turn on it.
+The anchor fixed *where am I*. It did not fix **what will this cost me**, and
+that turned out to be the real complaint — along with exposure being opaque.
+Three separate gaps, all structural:
+
+1. **Telegraphs are coloured against the tile you stand on**, so for three of
+   your four options the board was answering a different question.
+2. **`poiseBreak` appeared nowhere in the game.** Not the HUD, not the enemy, not
+   anywhere — only `enemies.ts` and the README. "My stroke landed and did not
+   stop it" was pure surprise.
+3. **Exposure shouted identically whether or not anything could reach you.** It
+   doubles incoming damage, so standing exposed on an empty board costs exactly
+   nothing — and a warning that fires when there is no danger teaches the player
+   to stop reading it.
+
+`preview.ts` answers all three by playing each direction on a throwaway copy of
+the state. Not a heuristic: `step()` is pure and enemies commit, so the enemy
+phase following your move is fully determined.
+
+The presentation went through three passes before it worked. First attempt put
+the cost numerals on the *neighbouring* tiles, where they collided with health
+pips and telegraphs; they now sit inside your own tile against the edge you would
+leave by, which also reads better — these are your options, not properties of
+your neighbours. The break mark started centred and full-size, which obliterated
+the foe it was annotating and read as "do not" rather than "you can stop this";
+it is now a small ✗ in the tile's corner.
+
+The telegraph's existing dashed/solid language was made to tell the truth, which
+was the cheapest win of the lot. It already meant "breakable / happening
+regardless" but was reading the enemy's *stance* alone, so a WARDEN you could not
+dent for want of three damage still advertised itself as interruptible.
+
+**The honest limitation:** the bot harness cannot evaluate any of this. Bots
+already compute it internally. What changed is the gap between what a bot knows
+and what a human can see, and `npm run model` is blind to precisely that. The
+argument that it does not flatten the skill curve is structural rather than
+measured — it hands the player one ply, and one ply is worth depth 4 against
+`thinking`'s 18.
 
 ---
 

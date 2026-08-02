@@ -101,7 +101,9 @@ async function setUp(kind, hp) {
 async function frameAt(name, t) {
   await page.evaluate((t) => {
     const rt = window.__stet;
-    rt.renderer.draw(rt.state, rt.anim, t, 1000);
+    // `moves` is the per-direction cost preview; without it drawCosts bails and
+    // the shot silently loses the thing it was taken to check.
+    rt.renderer.draw(rt.state, rt.anim, t, 1000, rt.moves);
   }, t);
   await page.screenshot({ path: join(OUT, `${name}.png`) });
   console.log(`  → ${name}.png  (t=${t}ms)`);
@@ -148,24 +150,45 @@ for (const t of [0, 20, 45, 85]) {
   await frameAt(`step-t${String(t).padStart(3, '0')}`, t);
 }
 
-// A settled board with a foe in reach. The adjacency tell is gated behind the
-// same settle timer as the telegraphs, so it is invisible in every mid-stroke
-// frame above and has to be photographed on its own.
+/**
+ * A settled board where all four directions mean genuinely different things.
+ *
+ * This is the shot the whole preview exists for. The costs are gated behind the
+ * same settle timer as the telegraphs, so they are invisible in every mid-stroke
+ * frame above and have to be photographed on their own.
+ *
+ * Reading clockwise from the top, a swipe should say:
+ *   up    — a WARDEN. The stroke lands and is SHRUGGED OFF (poise 3, you carry
+ *           1), so no break mark, and it hits you back for 3.
+ *   right — a RAT, killed outright. Break mark, no cost.
+ *   down  — empty paper, but a CHARGER is committed to lunging through it.
+ *   left  — empty and safe. No mark at all.
+ */
 await page.evaluate(() => {
   const rt = window.__stet;
   const s = rt.state;
   s.player.pos = { x: 2, y: 2 };
   s.player.exposed = false;
   s.player.combo = 0;
+  s.player.dmg = 1;
+  s.player.hp = s.player.maxHp;
+  s.blots = [];
+  s.items = [];
+  const mk = (id, kind, pos, hp, intent, seed) => ({
+    id, kind, pos, hp, maxHp: hp, ready: true, struck: false, poise: true, intent, seed,
+  });
   s.enemies = [
-    { id: 901, kind: 'rat', pos: { x: 3, y: 2 }, hp: 1, maxHp: 1, ready: false, struck: false, poise: true, intent: { kind: 'hold', path: [] }, seed: 11 },
-    // Two tiles off: must NOT get a tell, or the mark stops meaning "in reach".
-    { id: 902, kind: 'stalker', pos: { x: 0, y: 2 }, hp: 2, maxHp: 2, ready: false, struck: false, poise: true, intent: { kind: 'hold', path: [] }, seed: 22 },
+    mk(901, 'warden', { x: 2, y: 1 }, 5, { kind: 'move', path: [{ x: 2, y: 2 }] }, 11),
+    mk(902, 'rat', { x: 3, y: 2 }, 1, { kind: 'hold', path: [] }, 22),
+    mk(903, 'charger', { x: 0, y: 3 }, 3, { kind: 'move', path: [{ x: 1, y: 3 }, { x: 2, y: 3 }] }, 33),
   ];
+  rt.refreshPreview();
   rt.stop();
+  return rt.moves;
 });
-console.log('\nreach');
-await frameAt('reach-settled', 4000);
+console.log('\ncosts');
+await frameAt('costs-settled', 4000);
+console.log(JSON.stringify(await page.evaluate(() => window.__stet.moves), null, 1));
 
 await browser.close();
 server.close();

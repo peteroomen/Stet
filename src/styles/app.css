@@ -207,6 +207,22 @@ body {
   font-size: 1.15em;
 }
 
+/*
+ * Mid-swing with nothing committed to reaching you. The state is real and worth
+ * showing — step away and the combo resets — but it is costing you nothing this
+ * turn, and a warning that fires when there is no danger teaches the player to
+ * stop reading it.
+ */
+.exposed--idle {
+  color: var(--ghost);
+  font-weight: 600;
+}
+
+.exposed--idle span::after {
+  background: var(--ghost);
+  opacity: 0.55;
+}
+
 .combo {
   display: inline-flex;
   gap: 0.2rem;

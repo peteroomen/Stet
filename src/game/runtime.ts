@@ -3,6 +3,7 @@ import { Effects } from '../render/effects';
 import { EMPTY_ANIM, Renderer, buildAnim, strikeWeight, type TurnAnim } from '../render/renderer';
 import { applyThemeVars, type ThemeName } from '../render/theme';
 import { demoState, newGame, step } from './engine';
+import { previewMoves, underThreat, type MoveOutcome } from './preview';
 import { randomSeed } from './rng';
 import type { Dir, Ev, GameState } from './types';
 
@@ -24,6 +25,15 @@ export interface Hud {
   maxHp: number;
   dmg: number;
   exposed: boolean;
+  /**
+   * Exposed AND something is committed to a blow that lands on you.
+   *
+   * Exposure doubles incoming damage, so it is frightening — but only when
+   * something can actually reach you. Standing exposed on an empty board costs
+   * nothing at all, and a readout that shouts equally loudly in both cases is
+   * how a mechanic ends up feeling arbitrary instead of learnable.
+   */
+  inDanger: boolean;
   combo: number;
   enemiesLeft: number;
   stairsOpen: boolean;
@@ -43,6 +53,7 @@ function hudOf(s: GameState, best: number): Hud {
     maxHp: s.player.maxHp,
     dmg: s.player.dmg,
     exposed: s.player.exposed,
+    inDanger: s.player.exposed && underThreat(s),
     combo: s.player.combo,
     enemiesLeft: s.enemies.length,
     stairsOpen: s.stairsOpen,
@@ -59,6 +70,15 @@ export class Runtime {
   anim: TurnAnim = EMPTY_ANIM;
   renderer: Renderer;
   effects = new Effects();
+
+  /**
+   * What each of the four directions would cost, recomputed once per turn.
+   *
+   * Deliberately NOT per frame: `previewMoves` runs `step()` four times and
+   * `step()` deep-clones, which is nothing once a turn and real work at 60fps
+   * against a board that has not changed.
+   */
+  moves: MoveOutcome[] = [];
 
   private clock = 0;
   private wall = 0;
@@ -182,7 +202,17 @@ export class Runtime {
     this.pushHud();
   }
 
+  /**
+   * Recompute what each direction would cost. Every path that changes the board
+   * lands in `pushHud`, so this hangs off it rather than being remembered at six
+   * separate call sites.
+   */
+  refreshPreview(): void {
+    this.moves = this.state.screen === 'playing' ? previewMoves(this.state) : [];
+  }
+
   private pushHud(): void {
+    this.refreshPreview();
     this.onHud(hudOf(this.state, this.best));
   }
 
@@ -279,7 +309,7 @@ export class Runtime {
       this.resolve(d);
     }
 
-    this.renderer.draw(this.state, this.anim, this.clock, this.wall);
+    this.renderer.draw(this.state, this.anim, this.clock, this.wall, this.moves);
   }
 
   /* ---------------------------------------------------------------------
