@@ -561,18 +561,33 @@ export const WEAR_ONLY_HARSH = variant({
 });
 
 /**
- * The one the numbers actually point at: harsh wear WITH the spill kept.
+ * Harsh wear WITH the spill kept — and the one variant in this file that the
+ * numbers actually endorse.
  *
- * Wear cannot replace the spill — measured, a 3-ply bot runs to depth 190 under
- * `wear-only` and 189 under `wear-harsh`, because a player good enough never
- * revisits anything. But look at what harsh wear does to PACE, which the README
- * has flagged as unsolved since the beginning: a reactive player's inputs per
- * floor go 32/42/35/29/46/50/56/31 under the shipped rules to
- * 24/25/23/19/23/25/20/17 — nearly halved, and FLAT with depth instead of
- * ballooning.
+ * It first measured as a disaster (reacting 5.3 to 3.6, a 3-ply bot unmoved),
+ * which was a bug in the harness rather than the rule: `evaluate()` had no term
+ * for ink, so every bot played as though wear did not exist and was then charged
+ * for routing it had no reason to change. Once the bots could see their own ink:
  *
- * That is a different win from the one it was built for, and a better one. So
- * keep the spill for termination and add wear for tempo.
+ *                  reacting   thinking   gap    stalled
+ *   shipped            5.3       20.9    3.9x        0
+ *   wear-pressed       6.0       22.3    3.7x        0
+ *
+ * The floor rises FASTER than the ceiling and the gap tightens, which is this
+ * project's own stated definition of a good change. Pace improves with it — a
+ * reactive player's inputs per floor go 33/42/35/30/46/51/57/32 to
+ * 26/30/26/23/33/34/41/22 — and that is the problem the README has carried as
+ * unsolved from the beginning, whose note says it "needs a lever that is not the
+ * spill".
+ *
+ * Wear still cannot REPLACE the spill, and the corrected numbers say so far more
+ * loudly than the buggy ones did: under `wear-only` a 3-ply bot reaches depth
+ * 207 and 35 runs stall outright. A player good enough simply never revisits a
+ * tile. The spill keeps guaranteeing runs end; wear sets the tempo.
+ *
+ * One honest caveat: the ink weight in `evaluate()` is a number I chose, and
+ * these results are sensitive to it. The DIRECTION — floor up, gap tighter — is
+ * a strong signal; the exact 6.0 is not a precise claim.
  */
 export const WEAR_PRESSED = variant({
   id: 'wear-pressed',

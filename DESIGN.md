@@ -175,6 +175,48 @@ roughly one forced-damage moment per floor.
 The general lesson, which is the same one the spill taught: on this board a
 verb that makes patience cheap has to be bounded by construction, not priced.
 
+## The fade, and a lesson about the harness
+
+Wanted for a real reason: an enemy can be juked indefinitely, and the spill
+answers that by putting more BODIES on a 5x5 board — it buys pressure with
+legibility, on a game whose whole claim is being readable a turn ahead.
+
+**The flat fade does not work.** Every action spends ink, a kill gives some back.
+Measured, it charges for TIME, and time is exactly what separates skill here: a
+reactive player spends 32–58 inputs a floor, a 3-ply one 12–21 at depth 20. It
+never touches a strong player. It is still bad with ink-aware bots — reactive 3.1
+against a shipped 5.3.
+
+**WEAR does.** Charge for the thing actually complained about instead: retracing
+your steps wears the page through. Step onto a tile the page still remembers and
+it costs ink; fresh paper is free however long you take. A stroke clears the
+memory — commit to a fight and the page forgets where you have been.
+
+| | reacting | thinking | gap | stalled |
+|---|---|---|---|---|
+| shipped | 5.3 | 20.9 | 3.9x | 0 |
+| **wear + spill** | **6.0** | **22.3** | **3.7x** | 0 |
+| wear instead of spill | 40.6 | 207.3 | — | **35** |
+
+The floor rises faster than the ceiling and the gap tightens. Pace improves with
+it, which is the problem this project has carried as unsolved from the start.
+Wear cannot REPLACE the spill — a player good enough never revisits a tile, so 35
+runs stall — but as a tempo lever beside it, the numbers endorse it.
+
+### The lesson
+
+The first measurement said the opposite: reactive 5.3 → 3.6, expert unmoved. It
+was a bug in the harness. `evaluate()` had no term for ink, so every bot played
+as though the mechanic did not exist and was then charged for routing it had no
+reason to change.
+
+That bias has a direction, and it is worth remembering: **a mechanic the bots
+cannot see will always look like it costs a reactive player dearly and an expert
+nothing.** That is the exact shape this session kept reading as a structural
+finding. Some of it is real — an expert genuinely does not spend buffers, which
+is why halving hearts costs them nothing — but any new resource needs a term in
+`evaluate()` before a single number about it means anything.
+
 ## Phase 2 — ship FLOW
 
 `flowBonus` is a finished mechanic sitting behind a zero. It is wired end to end
