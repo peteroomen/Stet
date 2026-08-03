@@ -5,6 +5,22 @@ import type { Action, Dir } from '../game/types';
 const THRESHOLD = 22;
 
 /**
+ * How far a HELD drag must travel to earn each step after the first, as a
+ * fraction of a tile.
+ *
+ * This was the whole bug behind "one right swipe landed me five tiles away".
+ * Chained steps used the same 22 px threshold as the first one — and 22 px is
+ * about a third of a tile on a phone — so a drag walked roughly three tiles for
+ * every tile of travel. A 200 px swipe, which is an ordinary thumb movement,
+ * could spend five turns.
+ *
+ * "A held drag traces a path" has to mean the path your thumb actually drew. One
+ * tile of travel, one tile of movement. The first step keeps the small threshold
+ * because a flick has to stay responsive; nothing after it does.
+ */
+const CHAIN_TILES = 0.9;
+
+/**
  * Minimum time between two steps fired by ONE continuous drag.
  *
  * Distance alone cannot tell a flick from a held drag: they cover the same
@@ -37,12 +53,14 @@ const STEP_MS = 130;
  * traced, so it walks tile by tile, which is the thing that makes this good in a
  * thumb and is worth keeping.
  *
- * Time is the only signal that separates them. Distance cannot: a flick and the
- * first half of a deliberate drag cover exactly the same pixels, and at a 22 px
- * threshold — a quarter of a tile on a 390 px phone — every ordinary swipe
- * crossed it two or three times.
+ * Time is the first signal that separates them, and distance is the second: a
+ * flick and the first half of a deliberate drag cover the same pixels, but a
+ * drag that means to trace a path keeps going for a tile at a time. Raised from
+ * 260 ms because 260 ms is an ordinary swipe, not a deliberate trace — together
+ * with CHAIN_TILES this is what stops a normal thumb movement spending five
+ * turns.
  */
-const HOLD_MS = 260;
+const HOLD_MS = 420;
 
 const KEY_MAP: Record<string, Dir> = {
   ArrowUp: 'up',
@@ -123,6 +141,16 @@ export function useControls(
     let downAt = 0;
     let lastFire = 0;
 
+    /**
+     * One tile, in CSS pixels, mirroring `geometry()` in the renderer: the board
+     * is the smaller of the stage's two dimensions, padded 7.8% a side for the
+     * illuminated margin, divided into five.
+     */
+    const tilePx = () => {
+      const size = Math.min(el.clientWidth, el.clientHeight);
+      return (size - size * 0.156) / 5;
+    };
+
     const down = (e: PointerEvent) => {
       if (!e.isPrimary) return;
       active = true;
@@ -142,7 +170,10 @@ export function useControls(
       if (!active || e.pointerId !== pointerId) return;
       const dx = e.clientX - ox;
       const dy = e.clientY - oy;
-      if (Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) return;
+      // The first step of a gesture is a flick and stays cheap. Every step after
+      // it has to be dragged for, a tile at a time.
+      const need = lastFire === 0 ? THRESHOLD : Math.max(THRESHOLD, tilePx() * CHAIN_TILES);
+      if (Math.abs(dx) < need && Math.abs(dy) < need) return;
 
       // Already stepped on this drag. A second step has to be asked for: the
       // pointer must have been held past HOLD_MS, and STEP_MS must have passed

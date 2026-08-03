@@ -64,7 +64,7 @@ export function strikeWeight(dmg: number, killed: boolean): number {
   return clamp01((dmg - 1) / 3) * (killed ? 1 : 0.85) + (killed ? 0.35 : 0);
 }
 
-interface Motion {
+export interface Motion {
   from: Vec;
   to: Vec;
   t0: number;
@@ -114,6 +114,21 @@ export function buildAnim(events: Ev[]): TurnAnim {
       playerMotion = { from: ev.pos, to: wall, t0: 0, t1: BLOCK_MS, kind: 'block', weight: 0 };
       playerDur = Math.max(playerDur, BLOCK_MS);
     }
+  }
+
+  /*
+   * A descent throws every motion away.
+   *
+   * Taking the stairs rebuilds the board inside the same turn, so the `move`
+   * event that carried you onto them describes the floor you just LEFT: its
+   * coordinates, its occupants. Animating it over the new floor slid the hero
+   * across the page from an old tile to its new spawn — a visible teleport on
+   * every descent — and if the old stairs tile happened to hold one of the new
+   * floor's foes, it drew you standing on top of it for the length of the step.
+   */
+  if (events.some((ev) => ev.t === 'descend')) {
+    playerMotion = null;
+    playerDur = 0;
   }
 
   const eStart = playerDur + GAP_MS;
@@ -212,7 +227,7 @@ export function buildAnim(events: Ev[]): TurnAnim {
  * input — so the rules said "you do not advance" while the picture showed you
  * standing on top of the thing you had just hit.
  */
-function motionAt(m: Motion, clock: number): { pos: Vec; scale: number } {
+export function motionAt(m: Motion, clock: number): { pos: Vec; scale: number } {
   const rest = m.kind === 'move' ? m.to : m.from;
   if (clock <= m.t0) return { pos: m.from, scale: 1 };
   if (clock >= m.t1) return { pos: rest, scale: 1 };

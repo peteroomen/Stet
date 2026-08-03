@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAnim } from './renderer';
+import { buildAnim, motionAt } from './renderer';
 import { newGame, step } from '../game/engine';
 import type { Dir, Ev } from '../game/types';
 
@@ -138,3 +138,75 @@ function nearestFoe(s: ReturnType<typeof newGame>): Dir {
   if (Math.abs(dx) >= Math.abs(dy)) return dx === 0 ? (dy > 0 ? 'down' : 'up') : dx > 0 ? 'right' : 'left';
   return dy > 0 ? 'down' : 'up';
 }
+
+/**
+ * Taking the stairs rebuilds the board inside the same turn, so the `move` event
+ * that carried you onto them belongs to the floor you just LEFT. Animating it
+ * over the new floor slid the hero across the page on every descent — reported
+ * as "I still teleport weirdly sometimes" — and could draw you standing on one
+ * of the new floor's foes for the length of the step.
+ */
+describe('a descent animates nothing', () => {
+  it('drops the player motion when the floor changed under it', () => {
+    const anim = buildAnim([
+      { t: 'move', phase: 'p', from: { x: 3, y: 0 }, to: { x: 4, y: 0 }, dir: 'right' },
+      { t: 'descend', phase: 'p', depth: 4 },
+    ]);
+    expect(anim.playerMotion).toBeNull();
+    // The descent still gets its cue, so the sound and the page-turn flash fire.
+    expect(anim.cues.some((c) => c.ev.t === 'descend')).toBe(true);
+  });
+
+  it('still animates an ordinary step', () => {
+    const anim = buildAnim([
+      { t: 'move', phase: 'p', from: { x: 3, y: 0 }, to: { x: 4, y: 0 }, dir: 'right' },
+    ]);
+    expect(anim.playerMotion).not.toBeNull();
+  });
+});
+
+/**
+ * Where a finished motion rests. A bump never advances, so it must end on the
+ * tile it started from — `to` is the tile it swung at. Returning `to` is what
+ * left the hero standing on top of the foe it had just hit for most of the turn.
+ */
+describe('a finished motion rests where it belongs', () => {
+  const bump = buildAnim([
+    {
+      t: 'bump',
+      phase: 'p',
+      from: { x: 2, y: 2 },
+      to: { x: 3, y: 2 },
+      dir: 'right',
+      dmg: 1,
+      combo: 0,
+      killed: false,
+      kind: 'rat',
+      id: 1,
+      broke: true,
+    },
+  ]).playerMotion!;
+
+  it('leaves a finished bump on the tile it swung FROM', () => {
+    // Long past the end of the stroke — which is most of the turn, and all of
+    // the idle time before the next input.
+    expect(motionAt(bump, 99999).pos).toEqual({ x: 2, y: 2 });
+  });
+
+  it('never draws the bump past the tile it swung at', () => {
+    for (let t = 0; t <= bump.t1; t += 5) {
+      const { pos } = motionAt(bump, t);
+      expect(pos.y).toBe(2);
+      // Reach is a fraction of a tile: it must never arrive.
+      expect(pos.x).toBeGreaterThanOrEqual(2);
+      expect(pos.x).toBeLessThan(2.5);
+    }
+  });
+
+  it('leaves a finished step ON its destination', () => {
+    const move = buildAnim([
+      { t: 'move', phase: 'p', from: { x: 2, y: 2 }, to: { x: 3, y: 2 }, dir: 'right' },
+    ]).playerMotion!;
+    expect(motionAt(move, 99999).pos).toEqual({ x: 3, y: 2 });
+  });
+});
