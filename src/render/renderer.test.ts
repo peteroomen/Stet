@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildAnim, motionAt } from './renderer';
-import { newGame, step } from '../game/engine';
+import { chooseTrait, newGame, step } from '../game/engine';
 import type { Dir, Ev } from '../game/types';
 
 /**
@@ -16,6 +16,8 @@ describe('the turn timeline schedules everything', () => {
   const ALL_EVENTS: Ev['t'][] = [
     'blocked',
     'wait',
+    'offer',
+    'trait',
     'move',
     'bump',
     'kill',
@@ -37,6 +39,8 @@ describe('the turn timeline schedules everything', () => {
     const samples: Record<Ev['t'], Ev> = {
       blocked: { t: 'blocked', phase: 'p', pos: at, dir: 'left' },
       wait: { t: 'wait', phase: 'p', pos: at },
+      offer: { t: 'offer', phase: 'p', ids: ['vellum'] },
+      trait: { t: 'trait', phase: 'p', id: 'vellum' },
       move: { t: 'move', phase: 'p', from: at, to, dir: 'right' },
       bump: {
         t: 'bump',
@@ -108,7 +112,13 @@ describe('the turn timeline schedules everything', () => {
     let seen = 0;
     for (let run = 0; run < 30; run++) {
       let s = newGame(run * 131 + 7);
-      for (let i = 0; i < 200 && s.screen === 'playing'; i++) {
+      for (let i = 0; i < 200 && s.screen !== 'dead'; i++) {
+        // A descent holds the run open on a card hand; take one and carry on,
+        // or the sweep stops at the first floor and never sees a deep board.
+        if (s.screen === 'choosing') {
+          s = chooseTrait(s, s.offer[0]).state;
+          continue;
+        }
         const r = step(s, nearestFoe(s));
         const scheduled = new Set(buildAnim(r.events).cues.map((c) => c.ev));
         for (const ev of r.events) {

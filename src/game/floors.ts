@@ -129,12 +129,23 @@ export function generateFloor(depth: number, rng: Rng, s: GameState): Floor {
     take(spot);
   }
 
-  // Items. A vial shows up when you actually need one — this is the only place
-  // the generator looks at how the run is going.
+  /*
+   * Items.
+   *
+   * The vial is gone from the board when the marginalia are on, because healing
+   * moved into the card hand — and that is a better place for it. On the board a
+   * heal was free if you could route to it; as a card it costs you the permanent
+   * upgrade you would otherwise have taken, which makes every heal a decision and
+   * turns the choice into the run's own difficulty regulator.
+   *
+   * Under a variant with no marginalia the vial stays, so the baseline the
+   * harness measures against is still the game as it was.
+   */
   const items: Item[] = [];
   const itemCands = rng.shuffle(tiles().filter((t) => !eq(t, stairs)));
   const hurt = s.player.hp <= s.player.maxHp - 2;
-  const wantVial = depth >= 2 && rng.chance(hurt ? 0.6 : 0.16);
+  const wantVial =
+    s.rules.traitsPerDescent === 0 && depth >= 2 && rng.chance(hurt ? 0.6 : 0.16);
   if (wantVial) {
     const spot = itemCands.pop();
     if (spot) {

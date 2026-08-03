@@ -19,7 +19,7 @@ function Pips({ hp, maxHp }: { hp: number; maxHp: number }) {
   );
 }
 
-export function Hud({ hud }: { hud: HudData }) {
+export function Hud({ hud, onShowTraits }: { hud: HudData; onShowTraits: () => void }) {
   return (
     <header className="hud">
       <div className="hud__slot">
@@ -31,6 +31,20 @@ export function Hud({ hud }: { hud: HudData }) {
       <Pips hp={hud.hp} maxHp={hud.maxHp} />
 
       <div className="hud__slot hud__slot--right">
+        {/*
+          What you have written in the margin, and a way back to reading it. An
+          upgrade whose effect you cannot recall is an upgrade that is not in
+          the game — so the count is always visible and one tap opens the list.
+        */}
+        <button
+          className="hud__marks"
+          onClick={onShowTraits}
+          aria-label={`${hud.traits.length} marginalia — show what they do`}
+          title="What you have taken"
+        >
+          <span aria-hidden="true">❧</span>
+          <b>{hud.traits.length}</b>
+        </button>
         {hud.dmg > 1 && (
           <span className="hud__stat" title="Damage per stroke">
             Nib <b>×{hud.dmg}</b>
@@ -75,7 +89,7 @@ export function StateLine({ hud, taughtHold }: { hud: HudData; taughtHold: boole
   } else if (hud.canWait && !taughtHold && hud.waitsLeft > 0) {
     // Tapping to hold is the one input nothing on screen implies, so it is
     // taught until it has been used once — and then never shown again.
-    body = <span className="hint hint--teach">Tap to hold your ground</span>;
+    body = <span className="hint hint--teach">Tap to hold</span>;
   } else if (hud.depth === 1) {
     // Only on the first floor. A permanent line of instruction is one more thing
     // on a screen that had too much on it.

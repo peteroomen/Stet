@@ -107,6 +107,51 @@ export interface Rules {
    */
   waitsPerFloor: number;
 
+  /**
+   * Combo bonus ceiling. Four swings in and you are at +3; the risk stops
+   * scaling too. A rule rather than a constant so the LONG MEMORY trait can
+   * raise it, and so the harness can sweep it.
+   */
+  comboCap: number;
+
+  /**
+   * Marginalia offered on each descent. 0 = off, which is the game without any
+   * roguelike layer at all and the baseline everything else is measured against.
+   */
+  traitsPerDescent: number;
+
+  /**
+   * How many marks the margin holds. 0 = no limit.
+   *
+   * There has to be a limit, and the reason is structural rather than a taste
+   * for scarcity. `threatBudget` caps at 20 and the board holds seven bodies, so
+   * difficulty PLATEAUS with depth — while an uncapped card every floor
+   * compounds without end. Measured, a 3-ply bot with an unbounded build stopped
+   * dying altogether: 7 runs in 60 were still descending at twelve thousand
+   * turns, 12-21 inputs a floor at depth 20+, faster than they cleared depth 8.
+   * They had simply out-scaled everything the generator can build.
+   *
+   * So the margin fills. Past this many marks a descent offers only MEND, power
+   * plateaus where content already did, and the clock gets to win again.
+   */
+  maxTraits: number;
+
+  /**
+   * How many marginalia tighten the spill by one turn. 0 = off.
+   *
+   * This is what pays for the roguelike layer, and the threat ramp cannot do it:
+   * measured, taking the slope from 1.45 to 2.10 moved a reactive player only
+   * 6.2 to 5.4, because `threatBudget` caps at 20 and the board holds seven
+   * bodies. Depth stops buying enemies long before it stops needing to.
+   *
+   * The spill is the one knob that scales without limit, so power is coupled
+   * straight to it: every few cards you take, the page fills a turn sooner. It
+   * is legible — you can feel the ink rising as your build grows — and it is the
+   * right shape for the fiction. The more you have written in the margins, the
+   * less page you have left.
+   */
+  spillPerTraits: number;
+
   /** Turns between spills once a floor's grace is spent. */
   spillBase: number;
   /**
@@ -137,6 +182,25 @@ export interface Rules {
  *
  * So it costs nothing measurable, and it buys the fix for a real hole — see
  * `scripts/forced.ts`.
+ *
+ * On the marginalia: a card every descent, paid for by coupling the spill to how
+ * many you have taken. Eight to ten permanent upgrades is a great deal of power
+ * and the harness says so — the layer alone takes a reactive player 3.9 to 6.2
+ * and a 3-ply one 17.8 to 26.6. Steepening the threat ramp cannot pay for it,
+ * because the threat budget caps at 20 and the board holds seven bodies, so it
+ * saturates: slope 2.10 only claws back 6.2 to 5.4. Tightening the spill every
+ * four cards puts the ceiling back on its number exactly:
+ *
+ *   shipped        reacting 3.9  thinking 17.8
+ *   marginalia     reacting 6.2  thinking 26.6
+ *   ...every 2     reacting 5.1  thinking 12.2   (over-corrected)
+ *   ...every 3     reacting 5.4  thinking 15.1
+ *   ...every 4     reacting 5.6  thinking 17.8
+ *
+ * The floor stays raised, and that is the layer working rather than a failure to
+ * pay for it: a build makes a reactive player more consistent without taking the
+ * top of the game any higher. Note the bots pick with `chooseGreedy`, so these
+ * are the numbers for someone who already knows every card.
  */
 export const SHIPPED: Rules = {
   id: 'shipped',
@@ -152,6 +216,10 @@ export const SHIPPED: Rules = {
   allowWait: true,
   waitCost: 1,
   waitsPerFloor: 2,
+  comboCap: 3,
+  traitsPerDescent: 3,
+  maxTraits: 6,
+  spillPerTraits: 4,
   spillBase: 5,
   spillRampTurns: 0,
 };
@@ -317,8 +385,56 @@ export const WAIT_PRESS = variant({
   spillRampTurns: 12,
 });
 
+/**
+ * The roguelike layer, and the rebalance it forces.
+ *
+ * Eight to ten permanent upgrades over a run is a lot of power, and the point of
+ * these is to find out how much: `traits` is the layer bolted onto the shipped
+ * numbers, and the `-slope` variants steepen the threat ramp to pay for it. The
+ * target is the depth the game reaches WITHOUT the layer — the marginalia are
+ * meant to change how a run feels, not how far it gets.
+ */
+export const TRAITS_ON = variant({
+  id: 'traits',
+  label: 'M · Marginalia — a card every descent, shipped numbers',
+  traitsPerDescent: 3,
+});
+/** Threat-slope sweep. Kept because its FAILURE is the finding: it saturates. */
+export const TRAITS_S210 = variant({
+  id: 'traits-s210',
+  label: 'M · Marginalia, threat slope 2.10 (saturates — diagnostic)',
+  traitsPerDescent: 3,
+  threatSlope: 2.1,
+});
+
+/** The lever that actually scales: every N cards, the page fills a turn sooner. */
+export const TRAITS_P2 = variant({
+  id: 'traits-p2',
+  label: 'MP2 · Marginalia — every 2 cards, the spill tightens',
+  traitsPerDescent: 3,
+  spillPerTraits: 2,
+});
+export const TRAITS_P3 = variant({
+  id: 'traits-p3',
+  label: 'MP3 · Marginalia — every 3 cards, the spill tightens',
+  traitsPerDescent: 3,
+  spillPerTraits: 3,
+});
+export const TRAITS_P4 = variant({
+  id: 'traits-p4',
+  label: 'MP4 · Marginalia — every 4 cards, the spill tightens',
+  traitsPerDescent: 3,
+  maxTraits: 6,
+  spillPerTraits: 4,
+});
+
 export const VARIANTS: Rules[] = [
   SHIPPED,
+  TRAITS_ON,
+  TRAITS_S210,
+  TRAITS_P2,
+  TRAITS_P3,
+  TRAITS_P4,
   WAIT,
   WAIT_R1,
   WAIT_R2,

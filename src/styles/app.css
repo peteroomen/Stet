@@ -279,6 +279,152 @@ body {
   animation: breathe 900ms ease-in-out infinite;
 }
 
+/* ---------------------------------------------------------- marginalia -- */
+
+.hud__marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  font: inherit;
+  letter-spacing: var(--track);
+  color: var(--gold);
+  background: transparent;
+  border: 0;
+  padding: 0.1rem 0.2rem;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.hud__marks:hover,
+.hud__marks:focus-visible {
+  opacity: 1;
+}
+
+.hud__marks b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* The hand. Gilded, because this is the one moment that is not about being hit. */
+.overlay--cards {
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+}
+
+.cards__depth {
+  margin: 0;
+  font-size: var(--hud);
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  color: var(--ghost);
+}
+
+.cards__title {
+  margin: 0.2rem 0 1.2rem;
+  font-size: clamp(1.5rem, 7vmin, 2.1rem);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.cards {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'key name' 'key line';
+  gap: 0.1rem 0.75rem;
+  text-align: left;
+  font: inherit;
+  padding: 0.85rem 1rem;
+  background: color-mix(in srgb, var(--paper) 70%, transparent);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--gold);
+  border-radius: 3px;
+  cursor: pointer;
+  transition:
+    border-color 140ms var(--ease),
+    transform 140ms var(--ease);
+}
+
+.card:hover,
+.card:focus-visible {
+  border-left-color: var(--hero);
+  transform: translateX(2px);
+}
+
+.card__key {
+  grid-area: key;
+  align-self: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ghost);
+}
+
+.card__name {
+  grid-area: name;
+  font-weight: 700;
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.card__line {
+  grid-area: line;
+  font-size: 0.88em;
+  line-height: 1.45;
+  color: var(--inkSoft);
+}
+
+/* The ledger: what is already written, and what each of it does. */
+.ledger {
+  list-style: none;
+  margin: 0 0 1.2rem;
+  padding: 0;
+  display: grid;
+  gap: 0.7rem;
+  text-align: left;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+.ledger__row {
+  display: grid;
+  gap: 0.1rem;
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--gold);
+}
+
+.ledger__name {
+  font-weight: 700;
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.ledger__name em {
+  font-style: normal;
+  color: var(--gold);
+}
+
+.ledger__line {
+  font-size: 0.88em;
+  line-height: 1.45;
+  color: var(--inkSoft);
+}
+
+.ledger__empty {
+  color: var(--ghost);
+  margin: 0 0 1.2rem;
+}
+
+.btn--quiet {
+  opacity: 0.8;
+}
+
 /* --------------------------------------------------------------- overlay -- */
 
 .overlay {

@@ -12,7 +12,7 @@
  * (comparing rule variants), so both are measuring the same players.
  */
 
-import { newGame, step } from './engine';
+import { chooseTrait, newGame, step } from './engine';
 import { ORTHO, add, eq, inBounds, manhattan } from './grid';
 import { Rng } from './rng';
 import { SHIPPED, type Rules } from './rules';
@@ -191,11 +191,39 @@ export interface RunRecord {
   floors: FloorRecord[];
 }
 
+/**
+ * Which card a bot takes.
+ *
+ * Two honest models, and they bracket real play. `greedy` scores each card by
+ * playing it and evaluating the board — an optimiser building toward something.
+ * `blind` takes one at random, which is closer to a first-time player who does
+ * not yet know what any of them are worth. The gap between them is how much the
+ * marginalia reward knowing them.
+ */
+export type Chooser = (s: GameState, offer: string[], rng: Rng) => string;
+
+export const chooseGreedy: Chooser = (s, offer) => {
+  let best = offer[0];
+  let bestScore = -Infinity;
+  for (const id of offer) {
+    const r = chooseTrait(s, id);
+    const score = evaluate(r.state, r.state.depth);
+    if (score > bestScore) {
+      bestScore = score;
+      best = id;
+    }
+  }
+  return best;
+};
+
+export const chooseBlind: Chooser = (_s, offer, rng) => offer[rng.int(offer.length)];
+
 export function playRun(
   seed: number,
   maxTurns = 4000,
   brain: Brain = botMove,
   rules: Rules = SHIPPED,
+  chooser: Chooser = chooseGreedy,
 ): RunRecord {
   let s = newGame(seed, rules);
   const rng = new Rng(seed ^ 0x9e3779b9);
@@ -208,7 +236,15 @@ export function playRun(
   let floorTurns = 0;
   let floorDamage = 0;
 
-  while (s.screen === 'playing' && turns < maxTurns) {
+  while ((s.screen === 'playing' || s.screen === 'choosing') && turns < maxTurns) {
+    // A descent can hold the run open on a card hand. Taking one is not a turn:
+    // nothing on the board moves, so it does not count against the turn budget.
+    if (s.screen === 'choosing') {
+      s = chooseTrait(s, chooser(s, s.offer, rng)).state;
+      if (s.screen === 'choosing') break; // nothing takeable — do not spin
+      continue;
+    }
+
     const act = brain(s, rng);
     if (!act) break;
     const r = step(s, act);

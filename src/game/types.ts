@@ -95,7 +95,14 @@ export interface Player {
   facing: Dir;
 }
 
-export type Screen = 'title' | 'playing' | 'dead';
+/**
+ * `choosing` is a descent held open while three marginalia are on the page.
+ *
+ * A separate screen rather than a modal over `playing`, because every input path
+ * — swipe, tap, key — has to stop meaning "take a turn" while the cards are up,
+ * and one flag read in one place is safer than remembering that at each of them.
+ */
+export type Screen = 'title' | 'playing' | 'choosing' | 'dead';
 
 export interface RunStats {
   kills: number;
@@ -136,6 +143,10 @@ export interface GameState {
   spillClock: number;
   /** Holds spent on this floor. See Rules.waitsPerFloor. */
   floorWaits: number;
+  /** Marginalia taken this run, in the order they were taken. */
+  traits: string[];
+  /** The three on offer while `screen` is 'choosing'. Empty otherwise. */
+  offer: string[];
 }
 
 /** Which half of the turn an event belongs to — the renderer schedules from this. */
@@ -178,6 +189,8 @@ export type Ev =
   | { t: 'spill'; phase: EvPhase; pos: Vec; kind: EnemyKind }
   | { t: 'unseal'; phase: EvPhase; pos: Vec }
   | { t: 'descend'; phase: EvPhase; depth: number }
+  | { t: 'offer'; phase: EvPhase; ids: string[] }
+  | { t: 'trait'; phase: EvPhase; id: string }
   | { t: 'death'; phase: EvPhase; depth: number };
 
 export interface StepResult {

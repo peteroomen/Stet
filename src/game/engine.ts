@@ -3,6 +3,7 @@ import { generateFloor } from './floors';
 import { DIR_VEC, add, allTiles, chebyshev, eq, inBounds } from './grid';
 import { Rng, randomSeed } from './rng';
 import { SHIPPED, type Rules } from './rules';
+import { TRAIT_BY_ID, applyTraitRules, offerTraits } from './traits';
 import type { Action, Dir, Enemy, Ev, GameState, StepResult, Vec } from './types';
 
 /**
@@ -17,7 +18,10 @@ import type { Action, Dir, Enemy, Ev, GameState, StepResult, Vec } from './types
  */
 export const START_HP = 7;
 export const START_DMG = 1;
-/** Combo bonus ceiling. Four swings in and you're at +3; the risk stops scaling too. */
+/**
+ * Combo bonus ceiling — the default. Lives on `Rules` as `comboCap` so a trait
+ * can raise it; this is what a run starts with.
+ */
 export const MAX_COMBO = 3;
 export const VIAL_HEAL = 3;
 
@@ -48,7 +52,11 @@ export const spillEvery = (d: GameState, over: number): number => {
   // costs more the longer it goes on. Without it the trickle is flat, and a flat
   // trickle is farmable by anything that makes killing cheap (see rules.ts).
   const ramp = d.rules.spillRampTurns > 0 ? Math.floor(over / d.rules.spillRampTurns) : 0;
-  return Math.max(1, d.rules.spillBase - Math.floor(d.depth / 9) - ramp);
+  // Every N marginalia taken, the page fills a turn sooner. Power is coupled
+  // straight to pressure, because the threat budget saturates and this does not.
+  const built =
+    d.rules.spillPerTraits > 0 ? Math.floor(d.traits.length / d.rules.spillPerTraits) : 0;
+  return Math.max(1, d.rules.spillBase - Math.floor(d.depth / 9) - ramp - built);
 };
 
 /** Bigger floors get more quiet; deeper ones get less. */
@@ -86,6 +94,8 @@ export function newGame(seed: number = randomSeed(), rules: Rules = SHIPPED): Ga
     floorHpRallied: 0,
     spillClock: 0,
     floorWaits: 0,
+    traits: [],
+    offer: [],
   };
   enterFloor(s, []);
   return s;
@@ -124,6 +134,56 @@ function enterFloor(d: GameState, ev: Ev[]): void {
 
   replan(d);
   ev.push({ t: 'descend', phase: 'p', depth: d.depth });
+
+  /*
+   * The marginalia. The floor is already built and waiting; the run simply does
+   * not accept a turn until a card is taken.
+   *
+   * Never on the first floor — you arrive with nothing, and a choice before you
+   * have played a turn is a choice made blind.
+   */
+  if (d.rules.traitsPerDescent > 0 && d.depth > 1) {
+    const rng2 = new Rng(d.rng);
+    const hurt = d.player.hp < d.player.maxHp;
+    const offer = offerTraits(
+      d.traits,
+      (n) => rng2.int(n),
+      d.rules.traitsPerDescent,
+      hurt,
+      d.rules.maxTraits,
+    );
+    d.rng = rng2.s;
+    if (offer.length > 0) {
+      d.offer = offer.map((t) => t.id);
+      d.screen = 'choosing';
+      ev.push({ t: 'offer', phase: 'p', ids: [...d.offer] });
+    }
+  }
+}
+
+/**
+ * Take one of the marginalia on offer.
+ *
+ * Separate from `step()` because it is not a turn: nothing on the board moves,
+ * no enemy acts, and the floor you were just handed is untouched. It only
+ * unblocks the run.
+ */
+export function chooseTrait(state: GameState, id: string): StepResult {
+  if (state.screen !== 'choosing' || !state.offer.includes(id)) {
+    return { state, events: [], spent: false };
+  }
+  const trait = TRAIT_BY_ID.get(id);
+  if (!trait) return { state, events: [], spent: false };
+
+  const d: GameState = structuredClone(state);
+  d.rules = applyTraitRules(d.rules, trait);
+  trait.player?.(d.player);
+  // MEND is spent, not kept: it can be taken again on the next floor, and a run
+  // that healed four times has not "built" anything.
+  if (trait !== TRAIT_BY_ID.get('mend')) d.traits.push(id);
+  d.offer = [];
+  d.screen = 'playing';
+  return { state: d, events: [{ t: 'trait', phase: 'p', id }], spent: false };
 }
 
 const isBlot = (d: GameState, v: Vec) => d.blots.some((b) => eq(b, v));
@@ -295,14 +355,14 @@ export function step(state: GameState, action: Action): StepResult {
   const target = waiting ? undefined : d.enemies.find((e) => eq(e.pos, to));
 
   if (target) {
-    const bonus = Math.min(p.combo, MAX_COMBO);
+    const bonus = Math.min(p.combo, r.comboCap);
     // A charged stroke lands heavier and cannot be shrugged off. Spent here
     // whether or not it kills — you only get one punish per dodge.
     const charged = p.flow;
     p.flow = false;
     const dmg = p.dmg + bonus + (charged ? r.flowBonus : 0);
     target.hp -= dmg;
-    p.combo = Math.min(p.combo + 1, MAX_COMBO);
+    p.combo = Math.min(p.combo + 1, r.comboCap);
     p.exposed = true; // you are mid-swing until you do something else
 
     // A stroke heavy enough breaks a poised stance, and that enemy's committed

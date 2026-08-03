@@ -4,6 +4,7 @@ import type { Action } from './game/types';
 import { useControls } from './input/useControls';
 import type { ThemeName } from './render/theme';
 import { Hud, StateLine } from './ui/Hud';
+import { TraitLedger, TraitOffer } from './ui/Marginalia';
 import { DeathScreen, TitleScreen } from './ui/Screens';
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
   const [muted, setMuted] = useState(false);
   /** Has this player ever held? Until they have, the hint says how. */
   const [taught, setTaught] = useState(true);
+  const [ledgerOpen, setLedger] = useState(false);
 
   // The runtime owns the loop and pushes HUD data at most once per turn — React
   // never re-renders per frame, and never at pointer-move rate.
@@ -75,7 +77,9 @@ export default function App() {
     runtimeRef.current?.unlockAudio();
   }, []);
 
-  useControls(stageRef, { onDir, onConfirm, onGesture });
+  // While the card hand is up the board is frozen: swipes and taps would
+  // otherwise spend a turn, or a hold, against a floor you have not started.
+  useControls(stageRef, { onDir, onConfirm, onGesture, enabled: screen !== 'choosing' });
 
   const toggleTheme = useCallback(() => {
     const rt = runtimeRef.current;
@@ -114,8 +118,8 @@ export default function App() {
         </button>
       </div>
 
-      {hud && screen === 'playing' ? (
-        <Hud hud={hud} />
+      {hud && (screen === 'playing' || screen === 'choosing') ? (
+        <Hud hud={hud} onShowTraits={() => setLedger(true)} />
       ) : (
         <header className="hud" aria-hidden="true" />
       )}
@@ -127,6 +131,16 @@ export default function App() {
         )}
         {screen === 'dead' && hud && (
           <DeathScreen hud={hud} onAgain={() => runtimeRef.current?.newRun()} />
+        )}
+        {screen === 'choosing' && hud && (
+          <TraitOffer
+            ids={hud.offer}
+            depth={hud.depth}
+            onTake={(id) => runtimeRef.current?.takeTrait(id)}
+          />
+        )}
+        {ledgerOpen && hud && (
+          <TraitLedger ids={hud.traits} onClose={() => setLedger(false)} />
         )}
       </div>
 

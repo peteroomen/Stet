@@ -2,7 +2,7 @@ import { sfx } from '../audio/sfx';
 import { Effects } from '../render/effects';
 import { EMPTY_ANIM, Renderer, buildAnim, strikeWeight, type TurnAnim } from '../render/renderer';
 import { applyThemeVars, type ThemeName } from '../render/theme';
-import { demoState, newGame, step } from './engine';
+import { chooseTrait, demoState, newGame, step } from './engine';
 import { previewMoves, underThreat, type MoveOutcome } from './preview';
 import { randomSeed } from './rng';
 import type { Action, Ev, GameState } from './types';
@@ -48,6 +48,10 @@ export interface Hud {
   /** Turns of quiet left before the page starts filling; 0 once it has begun. */
   graceLeft: number;
   spilling: boolean;
+  /** Marginalia taken this run, in order. Drives the ledger and the HUD count. */
+  traits: string[];
+  /** The three on the page right now, while `screen` is 'choosing'. */
+  offer: string[];
 }
 
 function hudOf(s: GameState, best: number): Hud {
@@ -70,6 +74,8 @@ function hudOf(s: GameState, best: number): Hud {
     best,
     graceLeft: Math.max(0, s.grace - s.floorTurns),
     spilling: s.floorTurns >= s.grace && s.enemies.length > 0,
+    traits: [...s.traits],
+    offer: [...s.offer],
   };
 }
 
@@ -193,6 +199,18 @@ export class Runtime {
     this.effects.reset();
     this.renderer.invalidatePaper();
     sfx.stopDrone();
+    this.pushHud();
+  }
+
+  /** Take one of the marginalia on offer. Not a turn — nothing on the board moves. */
+  takeTrait(id: string): void {
+    const r = chooseTrait(this.state, id);
+    if (r.state === this.state) return;
+    this.state = r.state;
+    this.anim = EMPTY_ANIM;
+    this.clock = 0;
+    this.queued = null;
+    for (const ev of r.events) this.fire(ev);
     this.pushHud();
   }
 
@@ -358,6 +376,19 @@ export class Runtime {
 
       case 'wait': {
         sfx.wait();
+        break;
+      }
+
+      // The margin. Gilded rather than bloody: this is the one moment in a run
+      // that is not about being hit.
+      case 'offer': {
+        sfx.unseal();
+        break;
+      }
+
+      case 'trait': {
+        sfx.upgrade();
+        fx.addFlash(0.1, t.gold);
         break;
       }
 

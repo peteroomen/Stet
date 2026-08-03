@@ -161,6 +161,14 @@ export function buildAnim(events: Ev[]): TurnAnim {
       case 'descend':
         cues.push({ at: 0, ev });
         break;
+      // The cards going down, and the one taken. Both are chrome rather than
+      // board, but they still need a cue or the sound layer never hears them.
+      case 'offer':
+        cues.push({ at: 40, ev });
+        break;
+      case 'trait':
+        cues.push({ at: 0, ev });
+        break;
       case 'emove':
         enemyMotions.set(ev.id, {
           from: ev.from,

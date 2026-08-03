@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BOTS, botMove, playRun, summarise } from './bots';
-import { newGame, step } from './engine';
+import { chooseTrait, newGame, step } from './engine';
 import { fullyConnected } from './floors';
 import { eq, inBounds } from './grid';
 import { Rng } from './rng';
@@ -51,6 +51,9 @@ describe('floor generation is always solvable', () => {
           player: { ...s.player, pos: { x: st.x, y: above ? st.y - 1 : st.y + 1 } },
         };
         s = step(s, above ? 'down' : 'up').state;
+        // A descent now holds the run open on a card hand, and nothing else
+        // resolves until one is taken.
+        if (s.screen === 'choosing') s = chooseTrait(s, s.offer[0]).state;
       }
     }
   });
@@ -72,6 +75,9 @@ describe('floor generation is always solvable', () => {
           player: { ...s.player, pos: { x: st.x, y: above ? st.y - 1 : st.y + 1 } },
         };
         s = step(s, above ? 'down' : 'up').state;
+        // A descent now holds the run open on a card hand, and nothing else
+        // resolves until one is taken.
+        if (s.screen === 'choosing') s = chooseTrait(s, s.offer[0]).state;
       }
     }
   });

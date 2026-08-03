@@ -134,6 +134,70 @@ saying plainly rather than dressing up: bots already compute all of this
 internally. What changed is the gap between what a bot knows and what a human can
 see, and `npm run model` is blind to exactly that.
 
+## The margin
+
+On every descent past the first you are shown three **marginalia** and take one,
+for the rest of the run. `❧` in the corner counts what you have written; tap it
+to read any of them again.
+
+A trait is a `Rules` delta and nothing more, which buys two things for free.
+The **preview stays honest** — `previewMoves` plays each direction through the
+real `step()`, so a card that raises your damage immediately changes a foe's
+health pips and one that changes exposure changes the cost numerals. Traits
+teach themselves. And the **harness can play them**, so every card and every
+combination is measurable before it ships.
+
+**Healing is a card, not an item.** The vial is gone from the board. MEND takes
+a slot on any descent you are hurt — so every heal costs the permanent upgrade
+you would otherwise have taken, and the choice becomes the run's own difficulty
+regulator: a player taking damage spends their picks staying alive and does not
+compound, while one clearing floors cleanly powers up.
+
+### Paying for it
+
+Eight to ten permanent upgrades is a great deal of power, and the harness says
+so: the layer alone takes a reactive player from 3.9 to **6.2** and a 3-ply one
+from 17.8 to **26.6**.
+
+Steepening the threat ramp cannot pay for it. `threatBudget` caps at 20 and the
+board holds seven bodies, so difficulty **saturates** — slope 1.45 → 2.10 claws
+back only 6.2 → 5.4. Depth stops buying enemies long before it stops needing to.
+
+The spill is the one knob that scales without limit, so power is coupled
+straight to it: **every four marks, the page fills a turn sooner.**
+
+| | reacting | thinking |
+|---|---|---|
+| shipped | 3.9 | 17.8 |
+| marginalia, unpaid | 6.2 | 26.6 |
+| ...tightening every 2 | 5.1 | 12.2 |
+| ...every 3 | 5.4 | 15.1 |
+| **...every 4** | 5.6 | **17.8** |
+
+That puts the ceiling back on its number exactly. The floor stays raised, which
+is the layer working rather than a failure to pay for it — a build makes a
+reactive player more consistent without taking the top of the game any higher.
+
+### And the margin fills
+
+There has to be a cap, for the same structural reason. Content plateaus and an
+uncapped card every floor does not, so a strong build eventually out-scales
+everything the generator can build. Measured: with no cap, **7 runs in 60 stopped
+dying altogether** — still descending at twelve thousand turns, 12–21 inputs a
+floor at depth 20+, faster than they had cleared depth 8.
+
+| marks | never died | median depth |
+|---|---|---|
+| no cap | 7/60 | 18 |
+| 8 | 4/60 | 19 |
+| **6** | **0/60** | 20 |
+| 4 | 1/60 | 20 |
+
+Six: the loosest cap under which every run still ends, which is the harness's
+oldest invariant and the one the spill exists to protect. The cost is a flatter
+back half — the margin fills around depth 7 and the floors after it are the
+build being played out rather than assembled.
+
 ## The floor
 
 Clear every foe to break the wax seal on the stairs. The stairs are visible from
