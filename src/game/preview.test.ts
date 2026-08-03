@@ -4,7 +4,7 @@ import { previewMoves, underThreat } from './preview';
 import type { Enemy, EnemyKind, GameState, Vec } from './types';
 
 function enemy(id: number, kind: EnemyKind, pos: Vec, over: Partial<Enemy> = {}): Enemy {
-  const hp = { rat: 1, stalker: 2, charger: 3, warden: 5 }[kind];
+  const hp = { rat: 1, stalker: 2, charger: 3, warden: 5, drollery: 8 }[kind];
   return {
     id,
     kind,

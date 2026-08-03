@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BOTS, botMove, playRun, summarise } from './bots';
 import { chooseTrait, newGame, step } from './engine';
+import { isBossFloor } from './eras';
 import { fullyConnected } from './floors';
 import { eq, inBounds } from './grid';
 import { Rng } from './rng';
@@ -64,7 +65,13 @@ describe('floor generation is always solvable', () => {
       for (let floor = 0; floor < 10; floor++) {
         expect(s.blots.length).toBeLessThanOrEqual(3);
         expect(s.enemies.length).toBeLessThanOrEqual(7);
-        expect(s.enemies.length).toBeGreaterThanOrEqual(2);
+        // A boss floor is a duel: exactly one thing, and no cover.
+        if (isBossFloor(s.depth)) {
+          expect(s.enemies).toHaveLength(1);
+          expect(s.blots).toHaveLength(0);
+        } else {
+          expect(s.enemies.length).toBeGreaterThanOrEqual(2);
+        }
         const st = s.stairs;
         const above = st.y > 0;
         s = {

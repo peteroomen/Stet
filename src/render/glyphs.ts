@@ -51,6 +51,54 @@ export const HERO: GlyphDef = {
 };
 
 export const ENEMY_GLYPHS: Record<EnemyKind, GlyphDef> = {
+  /*
+   * THE DROLLERY — the grotesque in the margin.
+   *
+   * Bigger and heavier than anything else on the page, and deliberately the only
+   * ASYMMETRIC silhouette in the set: every other kind is mirror-balanced, so a
+   * lopsided shape reads as wrong before it reads as anything, which is what a
+   * boss should do at a glance. A hooked horn one side, a curled flourish the
+   * other, and a wide mouth.
+   */
+  drollery: {
+    paths: [
+      // The body: a broad, sagging bell.
+      [
+        [-0.82, 0.12],
+        [-0.62, -0.5],
+        [0, -0.72],
+        [0.62, -0.5],
+        [0.82, 0.12],
+        [0.44, 0.66],
+        [-0.44, 0.66],
+        [-0.82, 0.12],
+      ],
+      // A hooked horn, left only.
+      [
+        [-0.5, -0.6],
+        [-0.72, -0.98],
+        [-0.3, -0.9],
+      ],
+      // A scribe's curl for the other, because a drollery is drawn, not born.
+      [
+        [0.52, -0.58],
+        [0.86, -0.92],
+        [0.7, -0.36],
+      ],
+      // The mouth.
+      [
+        [-0.34, 0.28],
+        [-0.1, 0.44],
+        [0.14, 0.28],
+        [0.36, 0.44],
+      ],
+    ],
+    dots: [
+      [-0.3, -0.24, 0.11],
+      [0.3, -0.24, 0.11],
+    ],
+    weight: 1.3,
+  },
   rat: {
     paths: [
       [

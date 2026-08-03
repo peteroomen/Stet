@@ -1,4 +1,4 @@
-import { DIAG, ORTHO, add, chebyshev, eq, inBounds, manhattan } from './grid';
+import { DIAG, MAX_ENEMIES, ORTHO, add, chebyshev, eq, inBounds, manhattan } from './grid';
 import type { Rng } from './rng';
 import type { Enemy, EnemyKind, GameState, Intent, Vec } from './types';
 
@@ -65,9 +65,36 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
     name: 'WARDEN',
     tell: 'Shrugs off a light stroke. Only a heavy blow stops it.',
   },
+  /*
+   * THE DROLLERY — the grotesque a scribe drew in the margin, and the first
+   * boss.
+   *
+   * Deliberately simple. A first boss only has to teach that bosses exist, so it
+   * does one new thing and does it on a rhythm you can read: it is SLOW, and on
+   * the turn it winds it draws another creature out of the margin instead of
+   * standing still. So the fight is a race you can see — every wind-up you fail
+   * to punish is one more body on the board.
+   *
+   * Poise 3 means a bare stroke will not stop it. You have to build a ladder or
+   * take a card that carries one, which is the first floor where the marginalia
+   * are load-bearing rather than pleasant.
+   */
+  drollery: {
+    hp: 8,
+    dmg: 2,
+    poiseBreak: 3,
+    slow: true,
+    cost: 99, // never bought from a threat budget; placed by the boss floor
+    from: 4,
+    name: 'DROLLERY',
+    tell: 'Draws another out of the margin each time it winds. Burst it, or drown.',
+  },
 };
 
-export const ENEMY_ORDER: EnemyKind[] = ['rat', 'stalker', 'charger', 'warden'];
+export const ENEMY_ORDER: EnemyKind[] = ['rat', 'stalker', 'charger', 'warden', 'drollery'];
+
+/** Does this kind pull another body onto the board when it winds? */
+export const spawnsOnWind = (k: EnemyKind): boolean => k === 'drollery';
 
 /**
  * Can this enemy legally end a step on `v`?
@@ -176,11 +203,32 @@ function chargerPlan(e: Enemy, s: GameState, _rng: Rng): Intent {
 /** Compute (and thereby telegraph) what this enemy will do on the coming turn. */
 export function planIntent(e: Enemy, s: GameState, rng: Rng): Intent {
   const st = ENEMY_STATS[e.kind];
+
+  /*
+   * A DROLLERY is slow only while it still has margin to draw in.
+   *
+   * Its wind-up is not a rest, it is a summon — so once the page is full the
+   * wind-up has nothing left to do, and it simply comes for you every turn
+   * instead. "It has drawn all it can, so now it advances."
+   *
+   * This is also what guarantees a boss fight ENDS. A boss floor has no spill by
+   * design, so the boss is the only clock on it — and a clock that stops once
+   * the board fills is not a clock. Measured before this rule existed: 22% of
+   * 1-ply runs never died, kiting a capped-out boss around an open board until
+   * the turn budget ran out.
+   */
+  if (spawnsOnWind(e.kind) && s.enemies.length >= MAX_ENEMIES) {
+    return orthoPlan(e, s, rng);
+  }
+
   if (st.slow && !e.ready) return WIND;
 
   switch (e.kind) {
     case 'rat':
     case 'warden':
+    // A DROLLERY closes exactly like a heavy: straight at you, one tile at a
+    // time. Everything that makes it a boss happens on the wind-up.
+    case 'drollery':
       return orthoPlan(e, s, rng);
     case 'stalker':
       return stalkerPlan(e, s, rng);

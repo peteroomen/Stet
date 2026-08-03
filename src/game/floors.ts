@@ -1,5 +1,6 @@
-import { ENEMY_ORDER, ENEMY_STATS, makeEnemy } from './enemies';
-import { ORTHO, SIZE, add, allTiles, chebyshev, eq, inBounds, key, manhattan } from './grid';
+import { ENEMY_STATS, makeEnemy } from './enemies';
+import { eraAt, isBossFloor } from './eras';
+import { MAX_ENEMIES, ORTHO, SIZE, add, allTiles, chebyshev, eq, inBounds, key, manhattan } from './grid';
 import type { Rng } from './rng';
 import { SHIPPED, type Rules } from './rules';
 import type { Enemy, EnemyKind, GameState, Item, Vec } from './types';
@@ -32,7 +33,8 @@ export function fullyConnected(blots: Vec[], start: Vec): boolean {
   return seen.size === SIZE * SIZE - blocked.size;
 }
 
-export const MAX_ENEMIES = 7;
+// Re-exported from grid, where the board's own limits live.
+export { MAX_ENEMIES } from './grid';
 export const MAX_NIBS = 3;
 
 export interface Floor {
@@ -58,8 +60,17 @@ export function blotCount(depth: number, rng: Rng): number {
   return rng.range(1, 3);
 }
 
+/**
+ * What this depth can roll.
+ *
+ * The era owns the roster now, filtered by the old `from` gate so an era's
+ * heaviest kinds still arrive late within it rather than on its first floor.
+ * Bosses are never in the pool — they are placed, not bought.
+ */
 function unlocked(depth: number): EnemyKind[] {
-  return ENEMY_ORDER.filter((k) => depth >= ENEMY_STATS[k].from);
+  const era = eraAt(depth);
+  const pool = era.roster.filter((k) => depth >= ENEMY_STATS[k].from);
+  return pool.length > 0 ? pool : ['rat'];
 }
 
 /** Buy a roster from the depth's budget, biased toward the heaviest thing affordable. */
@@ -106,7 +117,9 @@ export function generateFloor(depth: number, rng: Rng, s: GameState): Floor {
   // Blots: impassable ink. Cover, chokepoints, and something for a charger to
   // crash into. Never adjacent to the entry, so you never open boxed in.
   const blots: Vec[] = [];
-  const wanted = blotCount(depth, rng);
+  // No cover on a boss floor. The fight is about reading one thing precisely,
+  // and a blot the boss can hide a spawn behind is noise in that reading.
+  const wanted = isBossFloor(depth) ? 0 : blotCount(depth, rng);
   const blotCands = rng.shuffle(tiles().filter((t) => manhattan(t, playerStart) > 1));
   for (const t of blotCands) {
     if (blots.length >= wanted) break;
@@ -119,7 +132,9 @@ export function generateFloor(depth: number, rng: Rng, s: GameState): Floor {
 
   // Enemies never spawn on top of you or in your face — minimum two tiles of air.
   const enemies: Enemy[] = [];
-  const roster = rollRoster(depth, rng, s.rules);
+  // A boss floor is a duel: one thing, as far from you as the board allows, and
+  // nothing else to read. See eras.ts.
+  const roster = isBossFloor(depth) ? [eraAt(depth).boss] : rollRoster(depth, rng, s.rules);
   const spawnCands = rng.shuffle(tiles().filter((t) => chebyshev(t, playerStart) >= 2));
   let id = s.nextId;
   for (const kind of roster) {
@@ -145,7 +160,10 @@ export function generateFloor(depth: number, rng: Rng, s: GameState): Floor {
   const itemCands = rng.shuffle(tiles().filter((t) => !eq(t, stairs)));
   const hurt = s.player.hp <= s.player.maxHp - 2;
   const wantVial =
-    s.rules.traitsPerDescent === 0 && depth >= 2 && rng.chance(hurt ? 0.6 : 0.16);
+    !isBossFloor(depth) &&
+    s.rules.traitsPerDescent === 0 &&
+    depth >= 2 &&
+    rng.chance(hurt ? 0.6 : 0.16);
   if (wantVial) {
     const spot = itemCands.pop();
     if (spot) {
@@ -153,7 +171,8 @@ export function generateFloor(depth: number, rng: Rng, s: GameState): Floor {
       take(spot);
     }
   }
-  const wantNib = depth >= 3 && s.stats.nibs < MAX_NIBS && rng.chance(0.26);
+  const wantNib =
+    !isBossFloor(depth) && depth >= 3 && s.stats.nibs < MAX_NIBS && rng.chance(0.26);
   if (wantNib) {
     const spot = itemCands.pop();
     if (spot) {

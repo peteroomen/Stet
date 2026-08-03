@@ -290,6 +290,10 @@ export class Runtime {
       const r = step(s, above ? 'down' : 'up');
       if (!r.events.some((e) => e.t === 'descend')) break;
       s = r.state;
+      // A descent holds the run open on a card hand, and nothing resolves until
+      // one is taken — so the jump stopped dead on the first offer and quietly
+      // landed two floors short of wherever it was aimed.
+      if (s.screen === 'choosing' && s.offer.length > 0) s = chooseTrait(s, s.offer[0]).state;
     }
     this.state = s;
     this.anim = EMPTY_ANIM;

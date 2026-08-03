@@ -14,7 +14,7 @@ export type Dir = 'up' | 'down' | 'left' | 'right';
  */
 export type Action = Dir | 'wait';
 
-export type EnemyKind = 'rat' | 'stalker' | 'charger' | 'warden';
+export type EnemyKind = 'rat' | 'stalker' | 'charger' | 'warden' | 'drollery';
 export type ItemKind = 'vial' | 'nib';
 
 /**

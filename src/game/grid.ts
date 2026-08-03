@@ -3,6 +3,15 @@ import type { Dir, Vec } from './types';
 /** The board is 5x5. Everything else in the game is tuned against that. */
 export const SIZE = 5;
 
+/**
+ * How many bodies the page holds.
+ *
+ * A board property rather than a generator one: several rules need to know when
+ * the page is full, and enemies.ts cannot reach into floors.ts for it without a
+ * cycle.
+ */
+export const MAX_ENEMIES = 7;
+
 export const DIR_VEC: Record<Dir, Vec> = {
   up: { x: 0, y: -1 },
   down: { x: 0, y: 1 },

@@ -198,6 +198,60 @@ oldest invariant and the one the spill exists to protect. The cost is a flatter
 back half — the margin fills around depth 7 and the floors after it are the
 build being played out rather than assembled.
 
+## Eras
+
+The rules never change. The **medium** does. STET is a proofreader's mark, so the
+descent is the history of how writing gets corrected — hand-scribed, then typed,
+then rendered. Handmade warmth to mechanical precision to cold light, and each
+era strips something away: era I has variable pressure, era II has none but keeps
+physical misregistration, era III has neither.
+
+| | I · The Manuscript | II · The Typewriter | III · The Terminal |
+|---|---|---|---|
+| Depths | 1–4 | 5–8 | 9–12 |
+| Surface | cream vellum, gilded | foolscap, faint blue rule | black, phosphor glow |
+| Mark | loaded brush | struck typebar | raster glyph |
+| Ink | iron gall + gold | bichrome ribbon, black / red | green or amber |
+
+Only **I** is built. II and III each need a mark-making system of their own —
+that is the bulk of that work, and it wants a render grid rather than a live
+board, the same way the brush numbers were chosen. Until they exist the descent
+repeats the manuscript; the threat budget and the marginalia still escalate, so a
+deep run is harder without pretending to be somewhere new.
+
+**This is structure, not decoration.** Every enemy kind used to unlock by depth
+7, which meant depths 8 and beyond were the same game forever — exactly why the
+threat budget saturating hurt so much when the marginalia arrived. Eras escalate
+by *quality*, which is the axis a 5×5 board has room for.
+
+### The boss
+
+An era is four floors: three and a boss. **THE DROLLERY** — the grotesque a
+scribe drew in the margin — waits on depth 4. HP 8, poise 3, and on the turn it
+winds it draws another creature out of the margin instead of resting. So the
+fight is a race you can read: every wind-up you fail to punish is one more body.
+
+Poise 3 means a bare stroke will not stop it. Depth 4 is the first floor where
+the marginalia are load-bearing rather than pleasant.
+
+A boss floor is a **duel** — one thing, no cover, no items, and the page does not
+fill while the boss lives. Surviving one widens the next hand to four cards.
+
+Two rules make the duel terminate, and both were measured rather than guessed:
+
+- **Once the page is full the DROLLERY stops winding** and simply advances every
+  turn. Its wind-up is a summon, not a rest, so with nothing left to draw it has
+  no reason to pause. Without this, 22% of 1-ply runs never died — kiting a
+  capped-out boss around an open board until the turn budget ran out.
+- **Kill the DROLLERY and everything it drew fades with it.** They are its
+  scribbles, not creatures. Without this a single leftover rat had no clock
+  behind it at all: a 1-ply bot kited one around a cleared boss floor for four
+  thousand turns in 9 runs of 40. It also makes ignoring the adds and bursting
+  the boss down a real strategy rather than a losing one.
+
+Measured after both: **every bot dies 100% of the time**, and depth 4 is now
+where 23% of reactive runs end — the boss working as a gate.
+
 ## The floor
 
 Clear every foe to break the wax seal on the stairs. The stairs are visible from

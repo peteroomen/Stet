@@ -1,5 +1,6 @@
-import { ENEMY_STATS, intentThreatens, makeEnemy, planIntent } from './enemies';
-import { generateFloor } from './floors';
+import { ENEMY_STATS, intentThreatens, makeEnemy, planIntent, spawnsOnWind } from './enemies';
+import { eraAt, isAfterBoss, isBossFloor } from './eras';
+import { MAX_ENEMIES, generateFloor } from './floors';
 import { DIR_VEC, add, allTiles, chebyshev, eq, inBounds } from './grid';
 import { Rng, randomSeed } from './rng';
 import { SHIPPED, type Rules } from './rules';
@@ -145,10 +146,13 @@ function enterFloor(d: GameState, ev: Ev[]): void {
   if (d.rules.traitsPerDescent > 0 && d.depth > 1) {
     const rng2 = new Rng(d.rng);
     const hurt = d.player.hp < d.player.maxHp;
+    // Surviving a boss widens the hand by one. It is the whole reward, and it
+    // costs no new machinery — a boss floor is simply worth a better choice.
+    const count = d.rules.traitsPerDescent + (isAfterBoss(d.depth) ? 1 : 0);
     const offer = offerTraits(
       d.traits,
       (n) => rng2.int(n),
-      d.rules.traitsPerDescent,
+      count,
       hurt,
       d.rules.maxTraits,
     );
@@ -210,6 +214,12 @@ function spillSite(d: GameState, rng: Rng): Vec | null {
  * identical, so this is behaviour-preserving for the shipped rules.
  */
 function shouldSpill(d: GameState): boolean {
+  // A boss floor does not fill WHILE THE BOSS LIVES. The boss is its own clock,
+  // and two clocks on one board is not a duel — but the moment it dies the duel
+  // is over and the ordinary rules of the page resume.
+  if (isBossFloor(d.depth) && d.enemies.some((e) => e.kind === eraAt(d.depth).boss)) {
+    return false;
+  }
   const over = d.floorTurns - d.grace;
   if (over <= 0) return false;
   d.spillClock += 1;
@@ -257,6 +267,18 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
   if (intent.kind === 'wind') {
     e.ready = true;
     ev.push({ t: 'wind', phase: 'e', id: e.id, kind: e.kind, pos: { ...e.pos } });
+    // A DROLLERY draws another out of the margin every time it winds, so the
+    // wind-up you fail to punish is a body you have to fight later. Capped by
+    // the board, which is what stops it running away.
+    if (spawnsOnWind(e.kind) && d.enemies.length < MAX_ENEMIES) {
+      const rng = new Rng(d.rng);
+      const site = spillSite(d, rng);
+      d.rng = rng.s;
+      if (site) {
+        d.enemies.push(makeEnemy(d.nextId++, 'rat', site, rng.int(1 << 20)));
+        ev.push({ t: 'spill', phase: 'e', pos: { ...site }, kind: 'rat' });
+      }
+    }
     return;
   }
   if (intent.kind === 'hold' || intent.path.length === 0) return;
@@ -395,6 +417,27 @@ export function step(state: GameState, action: Action): StepResult {
       d.stats.kills += 1;
       ev.push({ t: 'kill', phase: 'p', pos: { ...to }, kind: target.kind });
 
+      /*
+       * Kill the DROLLERY and everything it drew fades with it.
+       *
+       * The fiction says so — they are its marginal scribbles, not creatures —
+       * and the mechanics need it. A boss floor carries no spill, so anything
+       * outliving the boss has no clock behind it at all: measured, a 1-ply bot
+       * kited a single leftover rat around a cleared boss floor for four
+       * thousand turns in 9 runs of 40. It is also the right shape for a boss
+       * fight, because it makes ignoring the adds and bursting the boss down a
+       * real strategy rather than a losing one.
+       *
+       * Not counted as kills. You did not kill them; you killed the hand that
+       * drew them.
+       */
+      if (isBossFloor(d.depth) && target.kind === eraAt(d.depth).boss) {
+        for (const e of d.enemies) {
+          ev.push({ t: 'kill', phase: 'p', pos: { ...e.pos }, kind: e.kind });
+        }
+        d.enemies = [];
+      }
+
       // RALLY: a kill wins back health lost on this floor, and nothing more.
       // Capped per floor so the spill cannot be farmed into an HP fountain.
       if (r.rallyPerKill > 0) {
@@ -494,6 +537,26 @@ export function step(state: GameState, action: Action): StepResult {
   if (d.enemies.length === 0 && !d.stairsOpen) {
     d.stairsOpen = true;
     ev.push({ t: 'unseal', phase: 'e', pos: { ...d.stairs } });
+
+    /*
+     * You cleared the floor while standing on the way down.
+     *
+     * Descending is normally "step ONTO the stairs", so a player already on that
+     * tile had to step off and step back — and a search bot never will, because
+     * stepping off scores strictly worse than standing on the exit. Measured, one
+     * run in thirty wedged exactly here and burned six thousand turns on a clear
+     * board with the stairs open under its feet.
+     *
+     * It has always been possible; boss floors merely made it likely, because a
+     * duel ends wherever the last blow landed. The seal breaking under you is
+     * the same event as walking onto it.
+     */
+    if (eq(p.pos, d.stairs)) {
+      d.turn += 1;
+      d.stats.turns += 1;
+      enterFloor(d, ev);
+      return { state: d, events: ev, spent: true };
+    }
   }
 
   replan(d);

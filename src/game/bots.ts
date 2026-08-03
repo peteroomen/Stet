@@ -13,7 +13,7 @@
  */
 
 import { chooseTrait, newGame, step } from './engine';
-import { ORTHO, add, eq, inBounds, manhattan } from './grid';
+import { ORTHO, add, eq, inBounds, key, manhattan } from './grid';
 import { Rng } from './rng';
 import { SHIPPED, type Rules } from './rules';
 import type { Action, Dir, GameState, Vec } from './types';
@@ -65,6 +65,43 @@ export function botMove(s: GameState, rng: Rng): Dir | null {
   return DIR_OF[`${chosen.d.x},${chosen.d.y}`];
 }
 
+/**
+ * Steps to `goal` around the blots, or `Infinity` if it cannot be reached.
+ *
+ * Manhattan distance is a lie on a board with obstacles, and it cost real
+ * fidelity: with the stairs tucked behind two blots, a search bot walked into
+ * the manhattan-attractive dead end beside them and oscillated there forever.
+ * Measured, one run in thirty burned its entire turn budget on a CLEARED floor
+ * with the stairs open, which the harness then reported as "this run never
+ * ends" — a claim about the game that was really a claim about the bot.
+ *
+ * A human never had this problem: they can see the wall. Only used when the
+ * floor is clear and the way down is open, so the cost is a 25-tile flood on a
+ * small minority of evaluations.
+ */
+function walkDist(from: Vec, goal: Vec, blots: Vec[]): number {
+  if (eq(from, goal)) return 0;
+  const blocked = new Set(blots.map(key));
+  const seen = new Set<number>([key(from)]);
+  let edge: Vec[] = [from];
+  for (let d = 1; d <= 25 && edge.length > 0; d++) {
+    const next: Vec[] = [];
+    for (const cur of edge) {
+      for (const step of ORTHO) {
+        const n = add(cur, step);
+        if (!inBounds(n)) continue;
+        const k = key(n);
+        if (blocked.has(k) || seen.has(k)) continue;
+        if (eq(n, goal)) return d;
+        seen.add(k);
+        next.push(n);
+      }
+    }
+    edge = next;
+  }
+  return Infinity;
+}
+
 /** Static evaluation of a position, from the player's side. */
 export function evaluate(n: GameState, depthAtStart: number): number {
   let score = 0;
@@ -93,7 +130,9 @@ export function evaluate(n: GameState, depthAtStart: number): number {
 
   score += (n.depth - depthAtStart) * 500;
   if (n.stairsOpen && n.enemies.length === 0) {
-    score -= manhattan(n.player.pos, n.stairs) * 12;
+    // Around the blots, not through them.
+    const d = walkDist(n.player.pos, n.stairs, n.blots);
+    score -= (Number.isFinite(d) ? d : 40) * 12;
   }
   // Idling toward the spill is a real cost the search should feel.
   score -= Math.max(0, n.floorTurns - n.grace) * 8;

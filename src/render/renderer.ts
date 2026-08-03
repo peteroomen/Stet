@@ -1,4 +1,5 @@
 import { ENEMY_STATS, intentThreatens } from '../game/enemies';
+import { eraAt, isBossFloor } from '../game/eras';
 import { DIR_VEC, SIZE, add } from '../game/grid';
 import type { MoveOutcome } from '../game/preview';
 import type { Ev, GameState, Vec } from '../game/types';
@@ -1083,10 +1084,13 @@ export class Renderer {
 
       // A wound-up slow enemy leans forward — readable even without the ring.
       const coiled = st.slow && e.ready ? 1.06 : 1;
+      // A boss fills more of its tile than anything else on the page. It is the
+      // only thing on the floor and it should look like the reason you are here.
+      const scale = e.kind === eraAt(s.depth).boss && isBossFloor(s.depth) ? 0.78 : 0.56;
 
       drawGlyph(ctx, glyphFor(e.kind), cx, cy, {
         color: this.theme.ink,
-        size: g.cell * 0.56,
+        size: g.cell * scale,
         scale: coiled,
         seed: e.seed,
         boil,
