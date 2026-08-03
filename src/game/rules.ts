@@ -180,6 +180,33 @@ export interface Rules {
   /** Ink a kill gives back, capped at `fadeMax`. */
   fadePerKill: number;
 
+  /**
+   * WEAR — how many recently-occupied tiles the page remembers. 0 = off.
+   *
+   * The flat fade failed for a reason worth writing down: it charged for TIME,
+   * and time is exactly what separates skill here. A reactive player spends
+   * 32-58 inputs a floor; a 3-ply one spends 12-21 at depth 20. So a flat ink
+   * budget is a pace tax, it never touches the strong player at all, and it
+   * amplifies the gap instead of closing it. Measured: reacting 5.8 to 2.7 while
+   * thinking went UP.
+   *
+   * Halving hearts fails identically — reacting 5.3 to 4.2 and thinking 20.9 to
+   * 20.8 — for the same underlying reason. Shrinking a buffer only costs the
+   * player who was using it.
+   *
+   * So charge for the thing actually being complained about instead: JUKING.
+   * Retracing your steps wears the page through. Step onto a tile you have just
+   * left and it costs ink; fresh paper is free however long you take. A player
+   * moving purposefully across the board pays nothing at any speed, and a player
+   * pacing back and forth in a corner drains out.
+   *
+   * And a stroke CLEARS the memory — commit to a fight and the page forgets
+   * where you have been. Fight and it forgives; run and it remembers.
+   */
+  wearMemory: number;
+  /** Ink spent stepping onto a tile the page still remembers. */
+  wearCost: number;
+
   /** Turns between spills once a floor's grace is spent. */
   spillBase: number;
   /**
@@ -250,6 +277,8 @@ export const SHIPPED: Rules = {
   fadeMax: 0,
   fadePerAction: 1,
   fadePerKill: 8,
+  wearMemory: 0,
+  wearCost: 4,
   spillPerTraits: 4,
   spillBase: 5,
   spillRampTurns: 0,
@@ -459,6 +488,8 @@ export const TRAITS_P4 = variant({
   fadeMax: 0,
   fadePerAction: 1,
   fadePerKill: 8,
+  wearMemory: 0,
+  wearCost: 4,
   spillPerTraits: 4,
 });
 
@@ -489,6 +520,46 @@ export const THIN_3 = variant({
   startHp: 3,
 });
 
+/**
+ * The control I should have run the first time.
+ *
+ * `fade-only` removed the spill AND added the fade, so depth 126 could have been
+ * either. This isolates it: no clock of any kind.
+ */
+export const NO_CLOCK = variant({
+  id: 'no-clock',
+  label: 'Control — no spill, no fade, nothing hurrying you at all',
+  spillBase: 9999,
+});
+
+/** WEAR: fresh paper is free, retracing your steps is not. */
+export const WEAR = variant({
+  id: 'wear',
+  label: 'W · Wear — revisiting a tile you just left costs ink',
+  fadeMax: 40,
+  fadePerAction: 0,
+  wearMemory: 4,
+  wearCost: 4,
+});
+export const WEAR_ONLY = variant({
+  id: 'wear-only',
+  label: 'W! · Wear INSTEAD of the spill',
+  fadeMax: 40,
+  fadePerAction: 0,
+  wearMemory: 4,
+  wearCost: 4,
+  spillBase: 9999,
+});
+export const WEAR_ONLY_HARSH = variant({
+  id: 'wear-harsh',
+  label: 'W!! · Wear instead of the spill, longer memory and a steeper cost',
+  fadeMax: 40,
+  fadePerAction: 0,
+  wearMemory: 6,
+  wearCost: 8,
+  spillBase: 9999,
+});
+
 export const FADE = variant({
   id: 'fade',
   label: 'X · Fade — ink runs out as you act, kills give it back',
@@ -515,6 +586,10 @@ export const FADE_ONLY_55 = variant({
 
 export const VARIANTS: Rules[] = [
   SHIPPED,
+  NO_CLOCK,
+  WEAR,
+  WEAR_ONLY,
+  WEAR_ONLY_HARSH,
   THIN_4,
   THIN_3,
   FADE,

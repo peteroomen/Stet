@@ -81,6 +81,7 @@ export function newGame(seed: number = randomSeed(), rules: Rules = SHIPPED): Ga
       flow: false,
       ink: rules.fadeMax,
       ward: 0,
+      trail: [],
       facing: 'up',
     },
     enemies: [],
@@ -129,6 +130,10 @@ function enterFloor(d: GameState, ev: Ev[]): void {
   // A fresh page, a fresh charge of ink. The fade is a per-floor clock, exactly
   // like the spill it is a candidate to replace.
   d.player.ink = d.rules.fadeMax;
+  // Seeded with where you arrive, not left empty: the trail records where a turn
+  // ENDS, so an unseeded one forgets the tile you started on and the very first
+  // step-out-and-back — the most basic juke there is — came out free.
+  d.player.trail = [{ ...f.playerStart }];
   d.floorTurns = 0;
   d.floorHpLost = 0;
   d.floorHpRallied = 0;
@@ -481,6 +486,9 @@ export function step(state: GameState, action: Action): StepResult {
         return { state: d, events: ev, spent: true };
       }
     }
+    // Commit to a fight and the page forgets where you have been. WEAR charges
+    // for pacing, and a stroke is the opposite of pacing.
+    p.trail = [];
     // You do NOT advance into the tile. A bump attack is a swing, not a step.
   } else if (!waiting) {
     p.exposed = false;
@@ -552,6 +560,21 @@ export function step(state: GameState, action: Action): StepResult {
    */
   if (r.fadeMax > 0) {
     p.ink -= r.fadePerAction;
+
+    /*
+     * WEAR. Retracing your steps wears the page through.
+     *
+     * Charged on the tile you ended the turn on, so it catches the actual
+     * complaint — pacing back and forth to juke something — while a player
+     * crossing fresh paper pays nothing however long they take. That is the
+     * whole correction to the flat fade, which charged for time and therefore
+     * only ever taxed the slower player.
+     */
+    if (r.wearMemory > 0 && !waiting) {
+      if (p.trail.some((v) => eq(v, p.pos))) p.ink -= r.wearCost;
+      p.trail.unshift({ ...p.pos });
+      p.trail.length = Math.min(p.trail.length, r.wearMemory);
+    }
     if (p.ink <= 0) {
       p.ink = 0;
       d.screen = 'dead';

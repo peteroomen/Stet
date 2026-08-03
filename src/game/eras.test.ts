@@ -251,3 +251,99 @@ describe('gesso', () => {
     expect(r.state.player.ward).toBe(2);
   });
 });
+
+/**
+ * WEAR — retracing your steps wears the page through.
+ *
+ * The flat fade charged for TIME, which is exactly what separates skill here, so
+ * it only ever taxed the slower player. This charges for the thing actually
+ * being complained about: pacing back and forth to juke something.
+ */
+describe('wear', () => {
+  const worn = (over: Partial<GameState> = {}): GameState => {
+    const s = newGame(21, SHIPPED);
+    return {
+      ...s,
+      enemies: [],
+      items: [],
+      blots: [],
+      grace: 999,
+      rules: { ...s.rules, fadeMax: 40, fadePerAction: 0, wearMemory: 4, wearCost: 4 },
+      player: { ...s.player, pos: { x: 2, y: 2 }, ink: 40, trail: [{ x: 2, y: 2 }] },
+      ...over,
+    };
+  };
+
+  it('is free on fresh paper, however long you take', () => {
+    let s = worn();
+    // Four steps, four tiles never seen before. Crossing the board costs nothing
+    // at any speed — that is the whole correction to the flat fade.
+    for (const d of ['right', 'right', 'down', 'down'] as const) s = step(s, d).state;
+    expect(s.player.ink).toBe(40);
+  });
+
+  /**
+   * A tight lap is the juke this exists for, and with a memory of four it comes
+   * back around onto remembered paper exactly as it should.
+   */
+  it('charges for circling a two-by-two', () => {
+    let s = worn();
+    for (const d of ['right', 'down', 'left', 'up'] as const) s = step(s, d).state;
+    expect(s.player.ink).toBeLessThan(40);
+  });
+
+  it('charges for stepping back onto a tile you just left', () => {
+    let s = worn();
+    s = step(s, 'right').state; // (3,2), fresh
+    s = step(s, 'left').state; // back to (2,2) — remembered
+    expect(s.player.ink).toBe(36);
+  });
+
+  it('drains a player pacing back and forth', () => {
+    let s = worn();
+    for (let i = 0; i < 6; i++) s = step(s, i % 2 === 0 ? 'right' : 'left').state;
+    // Five of those six steps land on remembered paper.
+    expect(s.player.ink).toBeLessThanOrEqual(24);
+  });
+
+  it('forgets everything the moment you commit to a stroke', () => {
+    const base = worn({
+      enemies: [
+        {
+          id: 1,
+          kind: 'warden',
+          pos: { x: 3, y: 2 },
+          hp: 9,
+          maxHp: 9,
+          ready: false,
+          struck: false,
+          poise: true,
+          intent: { kind: 'hold', path: [] },
+          seed: 3,
+        },
+      ],
+    });
+    let s = step(base, 'up').state; // (2,1)
+    s = step(s, 'down').state; // back to (2,2): charged
+    const afterPacing = s.player.ink;
+    expect(afterPacing).toBeLessThan(40);
+
+    s = step(s, 'right').state; // strike the warden — clears the trail
+    // Everything is forgotten except the tile you are standing on, which you
+    // demonstrably still occupy.
+    expect(s.player.trail).toEqual([{ x: 2, y: 2 }]);
+    s = step(s, 'up').state; // (2,1) again, but the page has forgotten
+    expect(s.player.ink).toBe(afterPacing);
+  });
+
+  it('is inert while the rules leave it off', () => {
+    let s = newGame(21, SHIPPED); // fadeMax 0
+    const before = s.player.ink;
+    for (let i = 0; i < 4; i++) {
+      const r = step(s, i % 2 === 0 ? 'right' : 'left');
+      if (r.spent) s = r.state;
+    }
+    expect(s.player.ink).toBe(before);
+    expect(s.screen).not.toBe('dead');
+  });
+});

@@ -106,6 +106,13 @@ export interface Player {
    * routing across a floor for in a way another heart never is.
    */
   ward: number;
+  /**
+   * Tiles the page still remembers you standing on, most recent first.
+   *
+   * Only used when `Rules.wearMemory > 0`. Cleared by a stroke — committing to a
+   * fight is the opposite of the pacing this exists to charge for.
+   */
+  trail: Vec[];
   facing: Dir;
 }
 
