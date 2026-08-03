@@ -15,7 +15,7 @@ export type Dir = 'up' | 'down' | 'left' | 'right';
 export type Action = Dir | 'wait';
 
 export type EnemyKind = 'rat' | 'stalker' | 'charger' | 'warden' | 'drollery';
-export type ItemKind = 'vial' | 'nib';
+export type ItemKind = 'vial' | 'nib' | 'gesso';
 
 /**
  * What an enemy has committed to doing on the coming turn.
@@ -92,6 +92,20 @@ export interface Player {
    * shipped game leaves it permanently false.
    */
   flow: boolean;
+  /**
+   * Ink left before you fade off the page. See Rules.fadeMax; unused while the
+   * fade is off, and reset on every descent.
+   */
+  ink: number;
+  /**
+   * GESSO — the ground laid over a page before anything is written on it.
+   *
+   * Takes blows before your health does, and **cannot be mended**: MEND, RALLY
+   * and a vial all restore health and never this. So it is a resource you spend
+   * once and only replace by finding more, which makes a spare layer worth
+   * routing across a floor for in a way another heart never is.
+   */
+  ward: number;
   facing: Dir;
 }
 
@@ -191,7 +205,13 @@ export type Ev =
   | { t: 'descend'; phase: EvPhase; depth: number }
   | { t: 'offer'; phase: EvPhase; ids: string[] }
   | { t: 'trait'; phase: EvPhase; id: string }
-  | { t: 'death'; phase: EvPhase; depth: number };
+  | {
+      t: 'death';
+      phase: EvPhase;
+      depth: number;
+      /** What ended it. `fade` means the ink ran out, not that anything hit you. */
+      cause: 'blow' | 'fade';
+    };
 
 export interface StepResult {
   state: GameState;

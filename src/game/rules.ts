@@ -152,6 +152,34 @@ export interface Rules {
    */
   spillPerTraits: number;
 
+  /* --- THE FADE -----------------------------------------------------------
+   *
+   * You are written in ink, and every action you take spends some of it. Run
+   * out and you are gone from the page.
+   *
+   * The problem it exists for: an enemy can be juked indefinitely. The spill is
+   * the current answer, and it works, but it answers by putting more BODIES on
+   * a 5x5 board — it buys pressure with legibility, on a game whose whole claim
+   * is being readable a turn ahead. The fade buys the same pressure for nothing:
+   * no new marks, no new rules to read, and the feedback lands on the one thing
+   * the player is already watching.
+   *
+   * A kill gives ink back, which states the design's oldest thesis directly
+   * rather than by implication: aggression sustains you, timidity fades. The
+   * spill only ever said that in the negative.
+   *
+   * So it is modelled BOTH ways — beside the spill, and instead of it. If it can
+   * replace the spill outright, the board gets quieter and the game gets a
+   * better teacher at the same time.
+   * --------------------------------------------------------------------- */
+
+  /** Ink you arrive on a floor with. 0 = the fade is off entirely. */
+  fadeMax: number;
+  /** Ink spent per action taken. */
+  fadePerAction: number;
+  /** Ink a kill gives back, capped at `fadeMax`. */
+  fadePerKill: number;
+
   /** Turns between spills once a floor's grace is spent. */
   spillBase: number;
   /**
@@ -219,6 +247,9 @@ export const SHIPPED: Rules = {
   comboCap: 3,
   traitsPerDescent: 3,
   maxTraits: 6,
+  fadeMax: 0,
+  fadePerAction: 1,
+  fadePerKill: 8,
   spillPerTraits: 4,
   spillBase: 5,
   spillRampTurns: 0,
@@ -425,11 +456,71 @@ export const TRAITS_P4 = variant({
   label: 'MP4 · Marginalia — every 4 cards, the spill tightens',
   traitsPerDescent: 3,
   maxTraits: 6,
+  fadeMax: 0,
+  fadePerAction: 1,
+  fadePerKill: 8,
   spillPerTraits: 4,
+});
+
+/**
+ * THE FADE, both ways.
+ *
+ * `fade` adds it beside the spill; `fade-only` swaps it in for the spill
+ * entirely, which is the interesting one — if the numbers hold, the board loses
+ * a mechanic that costs it bodies and keeps the pressure.
+ */
+/**
+ * Halved hearts, with GESSO to make up the difference.
+ *
+ * Fewer base hearts makes every blow matter more; a ground layer you can find
+ * but never mend makes finding one matter more. The pair is the point — halving
+ * alone is just a harder game, and the harness has to price them together.
+ *
+ * 7 halves to 3.5, so both roundings get modelled.
+ */
+export const THIN_4 = variant({
+  id: 'thin-4',
+  label: 'T4 · Four hearts, gesso on the board',
+  startHp: 4,
+});
+export const THIN_3 = variant({
+  id: 'thin-3',
+  label: 'T3 · Three hearts, gesso on the board',
+  startHp: 3,
+});
+
+export const FADE = variant({
+  id: 'fade',
+  label: 'X · Fade — ink runs out as you act, kills give it back',
+  fadeMax: 40,
+});
+export const FADE_ONLY = variant({
+  id: 'fade-only',
+  label: 'X! · Fade INSTEAD of the spill — the page stops filling',
+  fadeMax: 40,
+  spillBase: 9999,
+});
+export const FADE_ONLY_28 = variant({
+  id: 'fade-only-28',
+  label: 'X!28 · Fade instead of the spill, tighter ink (28)',
+  fadeMax: 28,
+  spillBase: 9999,
+});
+export const FADE_ONLY_55 = variant({
+  id: 'fade-only-55',
+  label: 'X!55 · Fade instead of the spill, looser ink (55)',
+  fadeMax: 55,
+  spillBase: 9999,
 });
 
 export const VARIANTS: Rules[] = [
   SHIPPED,
+  THIN_4,
+  THIN_3,
+  FADE,
+  FADE_ONLY,
+  FADE_ONLY_28,
+  FADE_ONLY_55,
   TRAITS_ON,
   TRAITS_S210,
   TRAITS_P2,

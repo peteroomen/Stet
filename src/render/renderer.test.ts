@@ -74,7 +74,7 @@ describe('the turn timeline schedules everything', () => {
       spill: { t: 'spill', phase: 'e', pos: to, kind: 'rat' },
       unseal: { t: 'unseal', phase: 'e', pos: to },
       descend: { t: 'descend', phase: 'p', depth: 2 },
-      death: { t: 'death', phase: 'e', depth: 2 },
+      death: { t: 'death', phase: 'e', depth: 2, cause: 'blow' },
     };
 
     const anim = buildAnim([samples[t]]);

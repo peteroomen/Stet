@@ -213,6 +213,35 @@ export const ENEMY_GLYPHS: Record<EnemyKind, GlyphDef> = {
 };
 
 export const ITEM_GLYPHS: Record<ItemKind, GlyphDef> = {
+  /*
+   * GESSO — the ground laid over a page before anything is written on it.
+   *
+   * A shield shape, because that is what it does, but drawn as a laid PANEL with
+   * a burnished edge rather than a heater shield: this is a coat applied to the
+   * page, not a piece of armour someone is carrying.
+   */
+  gesso: {
+    paths: [
+      [
+        [-0.62, -0.66],
+        [0.62, -0.66],
+        [0.62, 0.18],
+        [0, 0.82],
+        [-0.62, 0.18],
+        [-0.62, -0.66],
+      ],
+      // The burnish: a diagonal sheen across the laid ground.
+      [
+        [-0.34, -0.3],
+        [0.3, -0.3],
+      ],
+      [
+        [-0.34, 0.06],
+        [0.14, 0.06],
+      ],
+    ],
+    weight: 1.05,
+  },
   vial: {
     // An ink droplet.
     paths: [

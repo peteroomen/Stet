@@ -173,6 +173,21 @@ export function generateFloor(depth: number, rng: Rng, s: GameState): Floor {
   }
   const wantNib =
     !isBossFloor(depth) && depth >= 3 && s.stats.nibs < MAX_NIBS && rng.chance(0.26);
+
+  /*
+   * GESSO. Deliberately the one pickup that is always worth crossing a floor
+   * for: it cannot be healed back, so a spare layer is the only durable thing
+   * on the board. Rarer than a nib, and never on a boss floor — a duel is one
+   * thing and no distractions.
+   */
+  const wantGesso = !isBossFloor(depth) && depth >= 2 && rng.chance(0.2);
+  if (wantGesso) {
+    const spot = itemCands.pop();
+    if (spot) {
+      items.push({ id: id++, kind: 'gesso', pos: spot, seed: rng.int(1 << 20) });
+      take(spot);
+    }
+  }
   if (wantNib) {
     const spot = itemCands.pop();
     if (spot) {

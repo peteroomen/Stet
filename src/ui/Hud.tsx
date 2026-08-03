@@ -1,19 +1,27 @@
 import type { Hud as HudData } from '../game/runtime';
 
 /** HP as ink drops. Filled while you have them, hollow once they are spent. */
-function Pips({ hp, maxHp }: { hp: number; maxHp: number }) {
-  const critical = hp <= 2;
+function Pips({ hp, maxHp, ward }: { hp: number; maxHp: number; ward: number }) {
+  const critical = hp <= 2 && ward === 0;
   return (
     <div
       className={`pips${critical ? ' pips--critical' : ''}`}
       role="img"
-      aria-label={`${hp} of ${maxHp} health`}
+      aria-label={`${hp} of ${maxHp} health${ward > 0 ? `, ${ward} gesso` : ''}`}
     >
       {Array.from({ length: maxHp }, (_, i) => (
         <span
           key={i}
           className={`pip${i >= hp ? ' pip--empty' : critical ? ' pip--low' : ''}`}
         />
+      ))}
+      {/*
+        Gesso sits AFTER the hearts and is drawn gilded rather than inked,
+        because it is not more health — it is something laid over the page, and
+        nothing you do will ever put it back.
+      */}
+      {Array.from({ length: ward }, (_, i) => (
+        <span key={`w${i}`} className="pip pip--ward" />
       ))}
     </div>
   );
@@ -28,7 +36,7 @@ export function Hud({ hud, onShowTraits }: { hud: HudData; onShowTraits: () => v
         </span>
       </div>
 
-      <Pips hp={hud.hp} maxHp={hud.maxHp} />
+      <Pips hp={hud.hp} maxHp={hud.maxHp} ward={hud.ward} />
 
       <div className="hud__slot hud__slot--right">
         {/*

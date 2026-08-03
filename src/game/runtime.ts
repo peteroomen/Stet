@@ -24,6 +24,8 @@ export interface Hud {
   depth: number;
   hp: number;
   maxHp: number;
+  /** GESSO layers. Take blows first and can never be mended. */
+  ward: number;
   dmg: number;
   exposed: boolean;
   /** Whether HOLD is offered at all. See Rules.allowWait.  */
@@ -60,6 +62,7 @@ function hudOf(s: GameState, best: number): Hud {
     depth: s.depth,
     hp: s.player.hp,
     maxHp: s.player.maxHp,
+    ward: s.player.ward,
     dmg: s.player.dmg,
     exposed: s.player.exposed,
     canWait: s.rules.allowWait,
@@ -317,7 +320,7 @@ export class Runtime {
       this.best = this.state.stats.deepest;
       localStorage.setItem(BEST_KEY, String(this.best));
     }
-    this.anim = buildAnim([{ t: 'death', phase: 'e', depth: this.state.depth }]);
+    this.anim = buildAnim([{ t: 'death', phase: 'e', depth: this.state.depth, cause: 'blow' }]);
     this.clock = 0;
     this.pushHud();
   }

@@ -79,6 +79,8 @@ export function newGame(seed: number = randomSeed(), rules: Rules = SHIPPED): Ga
       exposed: false,
       combo: 0,
       flow: false,
+      ink: rules.fadeMax,
+      ward: 0,
       facing: 'up',
     },
     enemies: [],
@@ -124,6 +126,9 @@ function enterFloor(d: GameState, ev: Ev[]): void {
   d.player.exposed = false;
   d.player.combo = 0;
   d.player.flow = false;
+  // A fresh page, a fresh charge of ink. The fade is a per-floor clock, exactly
+  // like the spill it is a candidate to replace.
+  d.player.ink = d.rules.fadeMax;
   d.floorTurns = 0;
   d.floorHpLost = 0;
   d.floorHpRallied = 0;
@@ -293,9 +298,15 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
     if (eq(next, d.player.pos)) {
       // Doubled while you are mid-swing. This is the whole cost of committing.
       const dmg = st.dmg * (d.player.exposed ? d.rules.exposedMult : 1);
-      d.player.hp -= dmg;
+      // GESSO takes it first. Health lost is counted separately from ward lost,
+      // because RALLY gives back health and must never give back a ground layer
+      // the whole point of which is that it cannot be replaced.
+      const soaked = Math.min(d.player.ward, dmg);
+      d.player.ward -= soaked;
+      const toHp = dmg - soaked;
+      d.player.hp -= toHp;
       d.stats.damageTaken += dmg;
-      d.floorHpLost += dmg;
+      d.floorHpLost += toHp;
       d.player.flow = false; // a charge you were hit through is not a dodge
       ev.push({
         t: 'eattack',
@@ -438,6 +449,11 @@ export function step(state: GameState, action: Action): StepResult {
         d.enemies = [];
       }
 
+      // A kill is ink back on the page. This is the design's oldest thesis said
+      // outright — aggression sustains you — where the spill only ever said it
+      // in the negative.
+      if (r.fadeMax > 0) p.ink = Math.min(r.fadeMax, p.ink + r.fadePerKill);
+
       // RALLY: a kill wins back health lost on this floor, and nothing more.
       // Capped per floor so the spill cannot be farmed into an HP fountain.
       if (r.rallyPerKill > 0) {
@@ -480,6 +496,11 @@ export function step(state: GameState, action: Action): StepResult {
         amount = Math.min(VIAL_HEAL, p.maxHp - p.hp);
         p.hp += amount;
         d.stats.vials += 1;
+      } else if (item.kind === 'gesso') {
+        // A ground layer over the page. Stacks, and is never capped by maxHp —
+        // it is not health, it is something laid on top of you.
+        amount = 1;
+        p.ward += 1;
       } else {
         amount = 1;
         p.dmg += 1;
@@ -511,7 +532,7 @@ export function step(state: GameState, action: Action): StepResult {
   if (p.hp <= 0) {
     p.hp = 0;
     d.screen = 'dead';
-    ev.push({ t: 'death', phase: 'e', depth: d.depth });
+    ev.push({ t: 'death', phase: 'e', depth: d.depth, cause: 'blow' });
     d.turn += 1;
     d.stats.turns += 1;
     return { state: d, events: ev, spent: true };
@@ -520,6 +541,26 @@ export function step(state: GameState, action: Action): StepResult {
   // A hold can cost more than an action, so patience is always priced. See
   // Rules.waitCost — at parity the harness stalls runs outright.
   d.floorTurns += waiting ? r.waitCost : 1;
+
+  /*
+   * The fade. Every action spends ink; run out and you are gone from the page —
+   * not struck down, simply no longer written.
+   *
+   * Charged AFTER the enemy phase so a blow that kills you reads as the blow,
+   * and only on turns that were actually spent, so a swipe into a wall is free
+   * exactly the way it is for everything else.
+   */
+  if (r.fadeMax > 0) {
+    p.ink -= r.fadePerAction;
+    if (p.ink <= 0) {
+      p.ink = 0;
+      d.screen = 'dead';
+      ev.push({ t: 'death', phase: 'e', depth: d.depth, cause: 'fade' });
+      d.turn += 1;
+      d.stats.turns += 1;
+      return { state: d, events: ev, spent: true };
+    }
+  }
 
   // The page fills. Checked before the clear-check so a spill on the very turn
   // you kill the last enemy keeps the floor honestly uncleared.

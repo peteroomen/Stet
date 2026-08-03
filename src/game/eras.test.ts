@@ -138,3 +138,116 @@ describe('eras and the floors that end them', () => {
     expect(pastFirstBoss).toBeGreaterThan(15);
   });
 });
+
+/**
+ * GESSO — a ground laid over the page. Takes blows before health does and can
+ * never be put back, which is the whole reason it is worth crossing a floor for.
+ */
+describe('gesso', () => {
+  const laid = (hp: number, ward: number): GameState => {
+    const s = newGame(11, SHIPPED);
+    return {
+      ...s,
+      enemies: [],
+      items: [],
+      blots: [],
+      grace: 999,
+      player: { ...s.player, pos: { x: 2, y: 2 }, hp, maxHp: 7, ward },
+    };
+  };
+
+  /** A rat square-on and committed to the player's tile. */
+  const withRat = (s: GameState): GameState => ({
+    ...s,
+    enemies: [
+      {
+        id: 1,
+        kind: 'rat',
+        pos: { x: 3, y: 2 },
+        hp: 1,
+        maxHp: 1,
+        ready: false,
+        struck: false,
+        poise: true,
+        intent: { kind: 'move', path: [{ x: 2, y: 2 }] },
+        seed: 5,
+      },
+    ],
+  });
+
+  it('takes the blow before health does', () => {
+    // Hold your ground and eat it. Stepping away would dodge the committed blow
+    // entirely, which tests the telegraph rather than the gesso.
+    const r = step(withRat(laid(5, 2)), 'wait');
+    expect(r.state.player.ward).toBe(1);
+    expect(r.state.player.hp).toBe(5);
+  });
+
+  it('spills over into health once it is gone', () => {
+    // One rat to strike — which is what leaves you mid-swing — and one already
+    // committed to your tile, whose blow then lands doubled. Holding would clear
+    // the swing before the enemy phase and never exercise this at all.
+    const base = laid(5, 1);
+    const mk = (id: number, x: number, y: number, path: { x: number; y: number }[]) => ({
+      id,
+      kind: 'rat' as const,
+      pos: { x, y },
+      hp: 1,
+      maxHp: 1,
+      ready: false,
+      struck: false,
+      poise: true,
+      intent: path.length ? { kind: 'move' as const, path } : { kind: 'hold' as const, path: [] as [] },
+      seed: id * 7,
+    });
+    const s: GameState = {
+      ...base,
+      player: { ...base.player, dmg: 0 }, // cannot kill, so the strike only exposes
+      enemies: [mk(1, 3, 2, []), mk(2, 1, 2, [{ x: 2, y: 2 }])],
+    };
+    const r = step(s, 'right');
+    expect(r.events.some((e) => e.t === 'bump')).toBe(true);
+    expect(r.state.player.ward).toBe(0);
+    expect(r.state.player.hp).toBe(4); // 2 damage, 1 soaked
+  });
+
+  it('is never given back by anything that mends', () => {
+    const base = laid(2, 0);
+    // RALLY on, damage taken, then a kill — health returns, gesso does not.
+    const s: GameState = {
+      ...base,
+      rules: { ...base.rules, rallyPerKill: 1, rallyFloorCap: 2 },
+      floorHpLost: 3,
+      enemies: [
+        {
+          id: 1,
+          kind: 'rat',
+          pos: { x: 3, y: 2 },
+          hp: 1,
+          maxHp: 1,
+          ready: false,
+          struck: false,
+          poise: true,
+          intent: { kind: 'hold', path: [] },
+          seed: 5,
+        },
+      ],
+    };
+    const r = step(s, 'right');
+    expect(r.state.stats.kills).toBe(1);
+    expect(r.state.player.hp).toBeGreaterThan(2); // rallied
+    expect(r.state.player.ward).toBe(0); // never
+  });
+
+  it('survives a descent, unlike everything else that resets', () => {
+    const s = laid(5, 2);
+    const st = s.stairs;
+    const above = st.y > 0;
+    const r = step(
+      { ...s, stairsOpen: true, player: { ...s.player, pos: { x: st.x, y: above ? st.y - 1 : st.y + 1 } } },
+      above ? 'down' : 'up',
+    );
+    expect(r.state.depth).toBe(s.depth + 1);
+    expect(r.state.player.ward).toBe(2);
+  });
+});
