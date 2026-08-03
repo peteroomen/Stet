@@ -526,6 +526,24 @@ loop for tuning how one looks and sounds); `__stet.kill()` ends the run.
 `node scripts/shots.mjs` drives the built game in a real browser and captures the
 states worth looking at, failing on any console error.
 
+`npm run check:cards` exists because of a bug no unit test could have found. The
+card overlay is rendered *inside* the element that owns the swipe gestures, so a
+tap aimed at a card was also a tap on the board underneath it — and a tap on the
+board resolved to "confirm", which on any screen that was not `playing` started
+a new run. **Choosing an upgrade dealt you a fresh run at depth 1.**
+
+The engine was correct throughout. The bug lived entirely in which handler saw a
+pointer event, which is the same place the swipe-chaining and the descent
+animation bugs lived. So it is checked in a real browser: take a card by tap and
+by key, tap the page with a hand up, press space with a hand up — the run you
+were playing has to still be the run you are playing.
+
+Fixing it surfaced a second fault immediately. `enabled` gated only the
+direction handler, so disabling gestures still let the stage CAPTURE the
+pointer — and a captured pointer never reaches the button on the overlay above
+it. Taps on a card did nothing at all, which is worse than the bug the guard was
+added for.
+
 ## Not yet
 
 Sound is synthesized but there is no music. There is no meta-progression, no

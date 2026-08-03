@@ -56,10 +56,14 @@ export default function App() {
   const onConfirm = useCallback(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
-    if (rt.state.screen !== 'playing') {
+    // ONLY these two screens start a run. It used to be "anything that is not
+    // playing", which quietly included `choosing` — so the tap that took a card
+    // also threw the run away and dealt a fresh one at depth 1.
+    if (rt.state.screen === 'title' || rt.state.screen === 'dead') {
       rt.newRun();
       return;
     }
+    if (rt.state.screen !== 'playing') return;
     // Only counts as taught if the tap could actually hold. Out of budget it is
     // a no-op, and marking the lesson learned from a tap that did nothing is how
     // a tutorial hint disappears before it has taught anything.

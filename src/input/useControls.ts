@@ -130,7 +130,10 @@ export function useControls(
         onDir('wait');
         return;
       }
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'r' || e.key === 'R') {
+      // `enabled` gates onConfirm too. It used to gate only onDir, so while the
+      // card hand was up a space press fell straight through to confirm — and
+      // confirm, on a screen that is not `playing`, starts a new run.
+      if (enabled && (e.key === 'Enter' || e.key === ' ' || e.key === 'r' || e.key === 'R')) {
         e.preventDefault();
         onGesture?.();
         onConfirm();
@@ -164,6 +167,15 @@ export function useControls(
 
     const down = (e: PointerEvent) => {
       if (!e.isPrimary) return;
+      /*
+       * Disabled means this element takes no part in the gesture at all.
+       *
+       * Not merely "fires no handlers": the card overlay is rendered INSIDE this
+       * element, and capturing the pointer here swallowed the click before it
+       * ever reached the button on top. Taps on a card did nothing whatsoever,
+       * which is a worse failure than the one that made this guard necessary.
+       */
+      if (!enabled) return;
       active = true;
       moved = false;
       ox = e.clientX;
@@ -211,8 +223,10 @@ export function useControls(
       pointerId = -1;
       el.releasePointerCapture?.(e.pointerId);
       // A clean, SHORT tap confirms. The time bound is what stops a swipe that
-      // never quite committed from spending one of your rationed holds.
-      if (!moved && e.timeStamp - downAt <= TAP_MS) onConfirm();
+      // never quite committed from spending one of your rationed holds, and
+      // `enabled` is what stops a tap aimed at a card on the overlay above this
+      // element from being read as a tap on the board underneath it.
+      if (enabled && !moved && e.timeStamp - downAt <= TAP_MS) onConfirm();
     };
 
     const cancel = () => {
