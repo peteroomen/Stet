@@ -560,6 +560,29 @@ export const WEAR_ONLY_HARSH = variant({
   spillBase: 9999,
 });
 
+/**
+ * The one the numbers actually point at: harsh wear WITH the spill kept.
+ *
+ * Wear cannot replace the spill — measured, a 3-ply bot runs to depth 190 under
+ * `wear-only` and 189 under `wear-harsh`, because a player good enough never
+ * revisits anything. But look at what harsh wear does to PACE, which the README
+ * has flagged as unsolved since the beginning: a reactive player's inputs per
+ * floor go 32/42/35/29/46/50/56/31 under the shipped rules to
+ * 24/25/23/19/23/25/20/17 — nearly halved, and FLAT with depth instead of
+ * ballooning.
+ *
+ * That is a different win from the one it was built for, and a better one. So
+ * keep the spill for termination and add wear for tempo.
+ */
+export const WEAR_PRESSED = variant({
+  id: 'wear-pressed',
+  label: 'WP · Wear AND the spill — the spill still ends runs, wear sets the pace',
+  fadeMax: 40,
+  fadePerAction: 0,
+  wearMemory: 6,
+  wearCost: 8,
+});
+
 export const FADE = variant({
   id: 'fade',
   label: 'X · Fade — ink runs out as you act, kills give it back',
@@ -590,6 +613,7 @@ export const VARIANTS: Rules[] = [
   WEAR,
   WEAR_ONLY,
   WEAR_ONLY_HARSH,
+  WEAR_PRESSED,
   THIN_4,
   THIN_3,
   FADE,
