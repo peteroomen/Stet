@@ -128,6 +128,22 @@ export function evaluate(n: GameState, depthAtStart: number): number {
   // single point of health — enough to prefer taking it, not enough to hoard.
   if (n.player.flow) score += 22;
 
+  /*
+   * Ink, when the fade or WEAR is on.
+   *
+   * Without this the bots are blind to the mechanic: they play exactly as they
+   * would without it and get punished for routing they never had a reason to
+   * change. That is not a measurement of the rule, it is a measurement of the
+   * bot not knowing the rule — and it made a reactive player look 32% worse
+   * under WEAR than they should.
+   *
+   * Weighted so a full charge is worth roughly a full bar of health, because
+   * both of them end the run at zero.
+   */
+  if (n.rules.fadeMax > 0) {
+    score += (n.player.ink / n.rules.fadeMax) * n.player.maxHp * 34;
+  }
+
   score += (n.depth - depthAtStart) * 500;
   if (n.stairsOpen && n.enemies.length === 0) {
     // Around the blots, not through them.
