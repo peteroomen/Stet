@@ -158,33 +158,73 @@ export class Sfx {
   }
 
   /**
-   * Landing a strike. `combo` raises the pitch of the transient so a ladder of
-   * swings is audibly a ladder — the fourth hit sounds like it is worth more.
+   * Landing a strike.
+   *
+   * `combo` raises the pitch of the transient so a ladder of swings is audibly a
+   * ladder. `weight` is the same 0..1 figure the renderer derives from the blow
+   * (see `strikeWeight`), and it drives body, length and bite — everything
+   * visible about a stroke scales with it, and a sound that did not was the last
+   * flat thing about hitting something.
+   *
+   * `broke: false` is the SHRUG, and it is a different sound rather than a
+   * quieter one. A blow that lands and fails to stop what it hit is the most
+   * surprising outcome in the game, and it used to be indistinguishable by ear
+   * from one that worked.
    */
-  strike(combo: number, killed: boolean): void {
-    const c = Math.min(combo, 3);
-    this.tone({ dur: 0.14, type: 'sine', f0: 190 + c * 26, f1: 58, gain: 0.34, attack: 0.002 });
+  strike(o: { combo: number; killed: boolean; weight: number; broke: boolean }): void {
+    const c = Math.min(o.combo, 3);
+    const w = Math.max(0, Math.min(1, o.weight));
+
+    if (!o.broke) {
+      // Damped and dull: no bite, no tail, and a low knock underneath. This is a
+      // stroke absorbed by something too heavy to care.
+      this.burst({ dur: 0.09, type: 'lowpass', f0: 900, f1: 220, q: 0.9, gain: 0.2, attack: 0.001 });
+      this.tone({ dur: 0.13, type: 'sine', f0: 110, f1: 62, gain: 0.26, attack: 0.003 });
+      this.tone({ at: 0.02, dur: 0.1, type: 'triangle', f0: 88, f1: 60, gain: 0.1, filter: 400 });
+      return;
+    }
+
     this.tone({
-      dur: 0.09,
+      dur: 0.12 + w * 0.14,
+      type: 'sine',
+      f0: 190 + c * 26,
+      f1: 58 - w * 12,
+      gain: 0.28 + w * 0.16,
+      attack: 0.002,
+    });
+    this.tone({
+      dur: 0.09 + w * 0.06,
       type: 'square',
       f0: 150 + c * 30,
       f1: 70,
-      gain: 0.09,
-      filter: 900,
+      gain: 0.07 + w * 0.07,
+      filter: 900 + w * 500,
     });
     // Wet transient — the ink actually going down.
     this.burst({
-      dur: 0.1,
+      dur: 0.1 + w * 0.06,
       type: 'bandpass',
-      f0: 1500 + c * 500,
+      f0: 1500 + c * 500 + w * 900,
       f1: 420,
       q: 0.9,
-      gain: 0.16,
+      gain: 0.14 + w * 0.12,
       attack: 0.001,
     });
-    if (!killed && c > 0) {
+    if (!o.killed && c > 0) {
       this.tone({ at: 0.035, dur: 0.07, type: 'triangle', f0: 520 + c * 120, gain: 0.05 });
     }
+  }
+
+  /**
+   * Holding your ground.
+   *
+   * Nothing moved, so it cannot be a step — but silence reads as a dropped
+   * input, and it was borrowing the menu blip, which reads as chrome rather than
+   * as a turn. A slow breath in: air, no transient, and a low settle under it.
+   */
+  wait(): void {
+    this.burst({ dur: 0.26, type: 'bandpass', f0: 320, f1: 900, q: 0.8, gain: 0.055, attack: 0.09 });
+    this.tone({ dur: 0.3, type: 'sine', f0: 98, f1: 74, gain: 0.075, attack: 0.05 });
   }
 
   /** Something dies: a dry crack, then the splash. */

@@ -53,7 +53,7 @@ export function Hud({ hud }: { hud: HudData }) {
  * needs to know, so it gets the loudest treatment the chrome has — set as the
  * proofreader's delete mark, struck through, which is also what it means.
  */
-export function StateLine({ hud, onWait }: { hud: HudData; onWait?: () => void }) {
+export function StateLine({ hud, taughtHold }: { hud: HudData; taughtHold: boolean }) {
   // Priority order is the order these matter in: what is happening to you right
   // now, then what is about to, then how to play.
   let body;
@@ -72,10 +72,13 @@ export function StateLine({ hud, onWait }: { hud: HudData; onWait?: () => void }
     body = <span className="spilling">The page is filling</span>;
   } else if (hud.graceLeft <= 4 && hud.enemiesLeft > 0) {
     body = <span className="warning">The ink is rising · {hud.graceLeft}</span>;
+  } else if (hud.canWait && !taughtHold && hud.waitsLeft > 0) {
+    // Tapping to hold is the one input nothing on screen implies, so it is
+    // taught until it has been used once — and then never shown again.
+    body = <span className="hint hint--teach">Tap to hold your ground</span>;
   } else if (hud.depth === 1) {
-    // Only on the first floor. It is a tutorial string, not a readout, and a
-    // permanent line of instruction is one more thing on a screen that had too
-    // much on it — it also wrapped into the Hold button on a narrow phone.
+    // Only on the first floor. A permanent line of instruction is one more thing
+    // on a screen that had too much on it.
     body = <span className="hint">Bump a foe to strike it</span>;
   } else {
     body = null;
@@ -84,15 +87,15 @@ export function StateLine({ hud, onWait }: { hud: HudData; onWait?: () => void }
   return (
     <div className="state">
       <span aria-live="polite">{body}</span>
-      {hud.canWait && (
-        <button
-          className="holdbtn"
-          onClick={onWait}
-          disabled={hud.waitsLeft === 0}
-          title="Hold your ground (space or .)"
-        >
-          Hold{Number.isFinite(hud.waitsLeft) && ` ×${hud.waitsLeft}`}
-        </button>
+      {/*
+        A readout, not a button. Tap, space and '.' all hold, so a fourth control
+        was only ever furniture — but the BUDGET is real information and has to
+        stay visible: two a floor is the whole reason holding is not a stall.
+      */}
+      {hud.canWait && Number.isFinite(hud.waitsLeft) && (
+        <span className={`holds${hud.waitsLeft === 0 ? ' holds--spent' : ''}`}>
+          Hold ×{hud.waitsLeft}
+        </span>
       )}
     </div>
   );

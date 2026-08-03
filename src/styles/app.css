@@ -224,31 +224,27 @@ body {
 }
 
 /*
- * Hold your ground. Sits in the state line rather than over the board, because
- * the board is the one place that has to stay readable a turn ahead.
+ * The hold budget. A readout rather than a control — tap, space and '.' all
+ * hold — but the count is real information, because two a floor is the entire
+ * reason holding is not a stall.
  */
-.holdbtn {
-  font: inherit;
-  letter-spacing: var(--track);
-  text-transform: uppercase;
+.holds {
   color: var(--ghost);
-  background: transparent;
   border: 1px solid currentColor;
   border-radius: 999px;
   padding: 0.16rem 0.7rem;
-  cursor: pointer;
-  opacity: 0.75;
-  transition: opacity 120ms var(--ease);
+  opacity: 0.7;
 }
 
-.holdbtn:hover:not(:disabled),
-.holdbtn:focus-visible {
-  opacity: 1;
-}
-
-.holdbtn:disabled {
+.holds--spent {
   opacity: 0.28;
-  cursor: default;
+}
+
+/* The one hint that pulses, because it is teaching an input nothing implies. */
+.hint--teach {
+  color: var(--hero);
+  opacity: 1;
+  animation: breathe 1.6s ease-in-out infinite;
 }
 
 .combo {

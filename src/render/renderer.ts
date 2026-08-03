@@ -816,14 +816,17 @@ export class Renderer {
       const bob = Math.sin(wall / 380 + it.seed) * g.cell * 0.035;
       const pulse = 0.5 + 0.5 * Math.sin(wall / 300 + it.seed);
       ctx.save();
-      ctx.globalAlpha = 0.1 + pulse * 0.1;
-      ctx.fillStyle = this.theme.gold;
+      // A brighter, wider halo than the border gilding gets: a pickup has to read
+      // as treasure at a glance, against a hero that is now blue and foes that
+      // are still ink.
+      ctx.globalAlpha = 0.16 + pulse * 0.14;
+      ctx.fillStyle = this.theme.leaf;
       ctx.beginPath();
-      ctx.arc(cx, cy + bob, g.cell * 0.34, 0, Math.PI * 2);
+      ctx.arc(cx, cy + bob, g.cell * 0.38, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
       drawGlyph(ctx, ITEM_GLYPHS[it.kind], cx, cy + bob, {
-        color: this.theme.leaf,
+        color: this.theme.leafDeep,
         size: g.cell * 0.46,
         seed: it.seed,
         boil,
@@ -1009,8 +1012,11 @@ export class Renderer {
       // are your four options, not properties of your neighbours, and putting
       // them on the neighbours meant colliding with whatever already lived
       // there — health pips, telegraphs, the break mark above.
-      const cx = px + v.x * g.cell * 0.38;
-      const cy = py + v.y * g.cell * 0.38;
+      // 0.33 rather than hard against the edge: a foe's health pips sit just
+      // over the boundary, and the numeral for the direction it stands in was
+      // landing on top of them.
+      const cx = px + v.x * g.cell * 0.33;
+      const cy = py + v.y * g.cell * 0.33;
       const size = g.cell * (m.lethal ? 0.25 : 0.19);
 
       ctx.save();
@@ -1105,7 +1111,10 @@ export class Renderer {
           ctx.save();
           ctx.globalAlpha = alive ? 0.85 : 0.22;
           ctx.fillStyle = taken ? this.theme.blood : this.theme.ink;
-          blobPath(ctx, px, py, pipR, e.seed + i * 53, 0.35, 8, boil);
+          // Pips your stroke would take off are drawn heavier as well as red. On
+          // a one-health RAT the entire message is a single dot, and a dot that
+          // only changes hue is not a message.
+          blobPath(ctx, px, py, taken ? pipR * 1.5 : pipR, e.seed + i * 53, 0.35, 8, boil);
           ctx.fill();
           ctx.restore();
         }
@@ -1163,7 +1172,7 @@ export class Renderer {
               [tx + sx * r, ty + sy * r - sy * arm],
             ] as Pt[],
             {
-              color: theme.inkSoft,
+              color: theme.hero,
               width: g.cell * 0.026,
               seed: 5150 + sx * 7 + sy * 13,
               amp: g.cell * 0.005,
@@ -1195,7 +1204,7 @@ export class Renderer {
      * to blood.
      * ------------------------------------------------------------------ */
     drawGlyph(ctx, HERO, cx, cy, {
-      color: theme.ink,
+      color: theme.hero,
       size: g.cell * 0.58,
       scale,
       seed: 101,

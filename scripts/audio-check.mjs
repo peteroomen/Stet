@@ -59,8 +59,12 @@ const report = await page.evaluate(async () => {
   const events = [
     { t: 'move', phase: 'p', from: { x: 0, y: 0 }, to: { x: 1, y: 0 }, dir: 'right' },
     { t: 'blocked', phase: 'p', pos: { x: 0, y: 0 }, dir: 'left' },
-    { t: 'bump', phase: 'p', from: { x: 1, y: 1 }, to: { x: 2, y: 1 }, dir: 'right', dmg: 1, combo: 0, killed: false, kind: 'rat', id: 1 },
-    { t: 'bump', phase: 'p', from: { x: 1, y: 1 }, to: { x: 2, y: 1 }, dir: 'right', dmg: 4, combo: 3, killed: true, kind: 'warden', id: 2 },
+    { t: 'wait', phase: 'p', pos: { x: 1, y: 1 } },
+    { t: 'bump', phase: 'p', from: { x: 1, y: 1 }, to: { x: 2, y: 1 }, dir: 'right', dmg: 1, combo: 0, killed: false, kind: 'rat', id: 1, broke: true },
+    { t: 'bump', phase: 'p', from: { x: 1, y: 1 }, to: { x: 2, y: 1 }, dir: 'right', dmg: 4, combo: 3, killed: true, kind: 'warden', id: 2, broke: true },
+    // Shrugged: lands, does not stop it. A different sound, not a quieter one —
+    // and `broke` must be present, or every bump silently takes this path.
+    { t: 'bump', phase: 'p', from: { x: 1, y: 1 }, to: { x: 2, y: 1 }, dir: 'right', dmg: 1, combo: 0, killed: false, kind: 'warden', id: 3, broke: false },
     { t: 'kill', phase: 'p', pos: { x: 2, y: 1 }, kind: 'warden' },
     { t: 'emove', phase: 'e', id: 3, kind: 'charger', from: { x: 4, y: 2 }, to: { x: 2, y: 2 } },
     { t: 'wind', phase: 'e', id: 3, kind: 'charger', pos: { x: 4, y: 2 } },

@@ -17,6 +17,7 @@ const EARLY = 0.84;
 const BEST_KEY = 'stet.best.v1';
 const THEME_KEY = 'stet.theme.v1';
 const MUTE_KEY = 'stet.mute.v1';
+const HOLD_KEY = 'stet.taughtHold.v1';
 
 export interface Hud {
   screen: GameState['screen'];
@@ -97,6 +98,14 @@ export class Runtime {
 
   best = 0;
   themeName: ThemeName = 'day';
+
+  /**
+   * Whether this player has ever held their ground.
+   *
+   * Tapping to hold is the one input nothing on screen implies, so the hint
+   * stays up until it has been used once — and then never again, on this device.
+   */
+  private _taughtHold = false;
   onHud: (h: Hud) => void = () => {};
 
   constructor(canvas: HTMLCanvasElement) {
@@ -104,6 +113,7 @@ export class Runtime {
     this.themeName = (localStorage.getItem(THEME_KEY) as ThemeName) ?? 'day';
     const muted = localStorage.getItem(MUTE_KEY) === '1';
     sfx.setMuted(muted);
+    this._taughtHold = localStorage.getItem(HOLD_KEY) === '1';
 
     this.state = demoState(randomSeed());
     this.renderer = new Renderer(canvas, this.effects, this.themeName);
@@ -112,6 +122,15 @@ export class Runtime {
 
   get muted(): boolean {
     return sfx.muted;
+  }
+
+  get taughtHold(): boolean {
+    return this._taughtHold;
+  }
+
+  set taughtHold(v: boolean) {
+    this._taughtHold = v;
+    localStorage.setItem(HOLD_KEY, v ? '1' : '0');
   }
 
   start(): void {
@@ -338,9 +357,7 @@ export class Runtime {
         break;
 
       case 'wait': {
-        // Quieter than a step, because nothing moved. It still needs a sound:
-        // an input that produces silence reads as an input that was dropped.
-        sfx.ui();
+        sfx.wait();
         break;
       }
 
@@ -360,7 +377,7 @@ export class Runtime {
         // enough spread for anything to feel explosive, because nothing was
         // quiet. A tap is now over before you notice; a real blow stops the page.
         const weight = strikeWeight(ev.dmg, ev.killed);
-        sfx.strike(ev.combo, ev.killed);
+        sfx.strike({ combo: ev.combo, killed: ev.killed, weight, broke: ev.broke });
         fx.addShake(cell * (0.03 + weight * 0.1));
         fx.addFreeze(30 + weight * 90);
         // The stroke itself, as a brush arc through the target. Ink when it bit

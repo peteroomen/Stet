@@ -14,6 +14,8 @@ export default function App() {
   const [hud, setHud] = useState<HudData | null>(null);
   const [theme, setTheme] = useState<ThemeName>('day');
   const [muted, setMuted] = useState(false);
+  /** Has this player ever held? Until they have, the hint says how. */
+  const [taught, setTaught] = useState(true);
 
   // The runtime owns the loop and pushes HUD data at most once per turn — React
   // never re-renders per frame, and never at pointer-move rate.
@@ -27,6 +29,7 @@ export default function App() {
     (window as unknown as { __stet?: Runtime }).__stet = rt;
     setTheme(rt.themeName);
     setMuted(rt.muted);
+    setTaught(rt.taughtHold);
     rt.start();
     return () => {
       rt.stop();
@@ -40,10 +43,32 @@ export default function App() {
     runtimeRef.current?.input(act);
   }, []);
 
+  /**
+   * A tap on the page. Begins a run from the title or death screen; holds your
+   * ground during one.
+   *
+   * Holding used to need a button, which is one more permanent thing on a screen
+   * that had too much on it. A tap is the gesture nobody has to be taught —
+   * except the first time, which is what `taughtHold` is for.
+   */
   const onConfirm = useCallback(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
-    if (rt.state.screen !== 'playing') rt.newRun();
+    if (rt.state.screen !== 'playing') {
+      rt.newRun();
+      return;
+    }
+    // Only counts as taught if the tap could actually hold. Out of budget it is
+    // a no-op, and marking the lesson learned from a tap that did nothing is how
+    // a tutorial hint disappears before it has taught anything.
+    const budget = rt.state.rules.waitsPerFloor;
+    const left = budget > 0 ? budget - rt.state.floorWaits : Infinity;
+    if (!rt.state.rules.allowWait || left <= 0) return;
+    rt.input('wait');
+    if (!rt.taughtHold) {
+      rt.taughtHold = true;
+      setTaught(true);
+    }
   }, []);
 
   const onGesture = useCallback(() => {
@@ -106,7 +131,7 @@ export default function App() {
       </div>
 
       {hud && screen === 'playing' ? (
-        <StateLine hud={hud} onWait={() => runtimeRef.current?.input('wait')} />
+        <StateLine hud={hud} taughtHold={taught} />
       ) : (
         <div className="state" aria-hidden="true" />
       )}

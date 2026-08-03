@@ -82,7 +82,11 @@ and stalls 8 runs of 150 against the turn cap outright. Rationed to two a floor
 it lands inside the noise of shipped on both ends and stalls nothing. So it costs
 nothing measurable and buys the fix for a real hole.
 
-`.` or space, or the button.
+**Tap the page to hold.** Space and `.` also work. A tap is short and
+deliberate by definition — a press over 260 ms is treated as a swipe that
+thought better of itself, so a hesitant gesture cannot silently spend one of two
+rationed holds. The hint that teaches it shows until the first time you use it
+and never again.
 
 ## The price, stated in advance
 
@@ -195,6 +199,19 @@ cached paper layer does not, because a shimmering grid reads as a fault.
 ## The look
 
 An **illuminated page** with **brush-drawn characters**.
+
+### Three pigments, three kinds of thing
+
+Everything on the board used to be drawn in the same ink, so you and the things
+trying to kill you were told apart by silhouette alone — which is real work on a
+busy floor, and the wrong kind of work for a game that has to be readable a turn
+ahead.
+
+The hero is now **ultramarine**: ground lapis, the most expensive pigment on a
+medieval page and reserved by convention for the principal figure. Foes stay in
+plain ink. Pickups keep the gilding, warmer and with a wider halo. Blood-red
+belongs to danger alone — every cost numeral, every committed blow — and gold to
+treasure, so no colour on the page means two things.
 
 The page is gilded: a two-tone band, a vine of leaves growing off it, a scrolled
 volute in each corner, and the depth set as a rubricated roman numeral in the

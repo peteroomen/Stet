@@ -10,6 +10,19 @@ export interface Theme {
   ghost: string;
   /** Overlay tint used for the low-health vignette. */
   danger: string;
+  /**
+   * The hero, and only the hero.
+   *
+   * Ultramarine: ground lapis, the most expensive pigment on a medieval page and
+   * reserved by convention for the principal figure. Everything on this board was
+   * drawn in the same ink, so you and the things trying to kill you were told
+   * apart by silhouette alone — which is real work on a busy floor. One pigment
+   * fixes it, and it is the historically correct one rather than a palette swap.
+   *
+   * Deliberately not red (that is danger, and every cost numeral uses it) and not
+   * gold (that is treasure).
+   */
+  hero: string;
   /** Bright face of the gilding on the illuminated border. */
   leaf: string;
   /** Shadowed side of the same gilding — the two together read as metal. */
@@ -31,7 +44,8 @@ export const THEMES: Record<ThemeName, Theme> = {
     gold: '#A87B2C',
     ghost: '#7E7362',
     danger: '#8C2F1E',
-    leaf: '#D9AC4A',
+    hero: '#243C7A',
+    leaf: '#E0AE3E',
     leafDeep: '#8A6216',
   },
   // The same page, read by candle.
@@ -46,7 +60,8 @@ export const THEMES: Record<ThemeName, Theme> = {
     gold: '#DCA94D',
     ghost: '#6E6455',
     danger: '#CE5740',
-    leaf: '#E7BE5E',
+    hero: '#8FB0E8',
+    leaf: '#EFC55F',
     leafDeep: '#7A5714',
   },
 };

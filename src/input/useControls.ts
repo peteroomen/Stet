@@ -5,6 +5,16 @@ import type { Action, Dir } from '../game/types';
 const THRESHOLD = 22;
 
 /**
+ * Longest a press can last and still count as a TAP rather than a hesitant
+ * swipe.
+ *
+ * A tap holds your ground, and holds are rationed — two a floor — so a swipe
+ * that started and thought better of itself must not silently spend one. Short
+ * and deliberate is the whole signal.
+ */
+const TAP_MS = 260;
+
+/**
  * How far a HELD drag must travel to earn each step after the first, as a
  * fraction of a tile.
  *
@@ -84,6 +94,7 @@ const KEY_MAP: Record<string, Dir> = {
 
 export interface ControlHandlers {
   onDir: (act: Action) => void;
+  /** A clean tap: begins a run on the title and death screens, holds in play. */
   onConfirm: () => void;
   onGesture?: () => void;
   enabled?: boolean;
@@ -199,8 +210,9 @@ export function useControls(
       active = false;
       pointerId = -1;
       el.releasePointerCapture?.(e.pointerId);
-      // A clean tap (no drag) confirms — used by the title and death screens.
-      if (!moved) onConfirm();
+      // A clean, SHORT tap confirms. The time bound is what stops a swipe that
+      // never quite committed from spending one of your rationed holds.
+      if (!moved && e.timeStamp - downAt <= TAP_MS) onConfirm();
     };
 
     const cancel = () => {
