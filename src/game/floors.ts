@@ -171,8 +171,27 @@ export function generateFloor(depth: number, rng: Rng, s: GameState): Floor {
       take(spot);
     }
   }
+  /*
+   * THE NIB IS NOT ON THE BOARD ANY MORE.
+   *
+   * Three of them, free for walking over, on top of a stacking Whetstone, was
+   * the run's whole difficulty curve — reported from play as "nib is OP… I can
+   * get a bunch of nib and play forever", and the harness agrees: damage is the
+   * only stat that compounds against a threat budget that saturates.
+   *
+   * Damage now costs a mark of margin like everything else, so taking it is
+   * giving something up. GESSO and the vial stay on the floor precisely because
+   * they do NOT compound — a layer is spent once and a heal is spent at once.
+   *
+   * Kept behind a flag rather than deleted so the harness can still measure the
+   * game as it was; `MAX_NIBS` and `stats.nibs` still mean what they meant.
+   */
   const wantNib =
-    !isBossFloor(depth) && depth >= 3 && s.stats.nibs < MAX_NIBS && rng.chance(0.26);
+    s.rules.nibsOnFloor &&
+    !isBossFloor(depth) &&
+    depth >= 3 &&
+    s.stats.nibs < MAX_NIBS &&
+    rng.chance(0.26);
 
   /*
    * GESSO. Deliberately the one pickup that is always worth crossing a floor

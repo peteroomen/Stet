@@ -55,6 +55,7 @@ describe('the turn timeline schedules everything', () => {
         kind: 'rat',
         id: 1,
         broke: true,
+        glance: false,
       },
       kill: { t: 'kill', phase: 'p', pos: to, kind: 'rat' },
       emove: { t: 'emove', phase: 'e', id: 1, kind: 'rat', from: at, to },
@@ -196,6 +197,7 @@ describe('a finished motion rests where it belongs', () => {
       kind: 'rat',
       id: 1,
       broke: true,
+      glance: false,
     },
   ]).playerMotion!;
 

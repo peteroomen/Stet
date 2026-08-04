@@ -1,7 +1,7 @@
 import { ENEMY_STATS, intentThreatens, makeEnemy, planIntent, spawnsOnWind } from './enemies';
 import { eraAt, isAfterBoss, isBossFloor } from './eras';
 import { MAX_ENEMIES, generateFloor } from './floors';
-import { DIR_VEC, add, allTiles, chebyshev, eq, inBounds } from './grid';
+import { DIR_VEC, ORTHO, add, allTiles, chebyshev, eq, inBounds } from './grid';
 import { Rng, randomSeed } from './rng';
 import { SHIPPED, type Rules } from './rules';
 import { TRAIT_BY_ID, applyTraitRules, offerTraits } from './traits';
@@ -241,6 +241,80 @@ function shouldSpill(d: GameState): boolean {
 }
 
 /**
+ * Everything that follows from a foe dying, wherever the blow came from.
+ *
+ * Pulled out when a stroke stopped being able to hit only one thing. A card that
+ * carries the stroke through, or catches what you are touching, can kill on a
+ * tile you did not aim at — and every one of these consequences has to happen
+ * there too or they become a way to launder the rules.
+ *
+ * MOMENTUM is deliberately NOT here. A free action is granted for the kill you
+ * committed to, never for one you caught in passing, or a splash card would turn
+ * a crowd into an engine.
+ */
+function killEnemy(victim: Enemy, d: GameState, at: Vec, ev: Ev[]): void {
+  const r = d.rules;
+  const p = d.player;
+
+  d.enemies = d.enemies.filter((e) => e.id !== victim.id);
+  d.stats.kills += 1;
+  ev.push({ t: 'kill', phase: 'p', pos: { ...at }, kind: victim.kind });
+
+  /*
+   * Kill the DROLLERY and everything it drew fades with it.
+   *
+   * The fiction says so — they are its marginal scribbles, not creatures — and
+   * the mechanics need it. A boss floor carries no spill, so anything outliving
+   * the boss has no clock behind it at all: measured, a 1-ply bot kited a single
+   * leftover rat around a cleared boss floor for four thousand turns in 9 runs
+   * of 40. It is also the right shape for a boss fight, because it makes
+   * ignoring the adds and bursting the boss down a real strategy.
+   *
+   * Not counted as kills. You did not kill them; you killed the hand that drew
+   * them.
+   */
+  if (isBossFloor(d.depth) && victim.kind === eraAt(d.depth).boss) {
+    for (const e of d.enemies) {
+      ev.push({ t: 'kill', phase: 'p', pos: { ...e.pos }, kind: e.kind });
+    }
+    d.enemies = [];
+  }
+
+  /*
+   * A kill is ink back on the page, and it clears the trail.
+   *
+   * A KILL, not a swing. Clearing on any stroke was launderable and the harness
+   * found it immediately: strike-move-strike-move never accumulates a trail at
+   * all, so on a crowded board — where there is always something to swing at —
+   * wear costs nothing forever. Measured, one run in sixty sat at depth 31 with
+   * seventeen bodies on the board, one health, and a FULL charge of ink after
+   * three and a half thousand turns on the floor.
+   *
+   * Killing is bounded by what is actually there to kill, so it cannot be farmed
+   * the same way — and it says the design's oldest thesis outright: aggression
+   * that accomplishes something sustains you.
+   */
+  if (r.fadeMax > 0) p.ink = Math.min(r.fadeMax, p.ink + r.fadePerKill);
+  p.trail = [];
+
+  // RALLY: a kill wins back health lost on this floor, and nothing more. Capped
+  // per floor so the spill cannot be farmed into an HP fountain.
+  if (r.rallyPerKill > 0) {
+    const room = Math.min(
+      r.rallyPerKill,
+      p.maxHp - p.hp,
+      d.floorHpLost,
+      Math.max(0, r.rallyFloorCap - d.floorHpRallied),
+    );
+    if (room > 0) {
+      p.hp += room;
+      d.floorHpRallied += room;
+      ev.push({ t: 'pickup', phase: 'p', pos: { ...at }, kind: 'vial', amount: room });
+    }
+  }
+}
+
+/**
  * One enemy landing one blow on you.
  *
  * Pulled out of the walk loop when the sweep arrived, so a bar coming down on
@@ -453,66 +527,64 @@ export function step(state: GameState, action: Action): StepResult {
       id: target.id,
       /** False when the blow landed but was shrugged off. */
       broke: heavy && target.poise,
+      glance: false,
     });
 
+    /*
+     * What else the stroke caught.
+     *
+     * THE LONG NIB carries it through, one tile further down the line. THE BROAD
+     * NIB catches everything else you are touching. Both land `p.dmg` flat — no
+     * combo, no charge — and NEITHER can break a stance:
+     *
+     *   only the foe you aimed at can be interrupted.
+     *
+     * That is the rule these cards are built around. Interrupting is the game's
+     * defensive move and it has always been one a turn; a card that broke four
+     * stances at once would not be a wider stroke, it would be immunity to being
+     * surrounded. So these buy you REACH and BREADTH, never safety — and being
+     * surrounded stays as frightening as it should be while becoming answerable.
+     */
+    const glanced: Enemy[] = [];
+    if (r.strokeReach > 0) {
+      let t = to;
+      for (let i = 0; i < r.strokeReach; i++) {
+        t = add(t, DIR_VEC[dir]);
+        if (!inBounds(t) || isBlot(d, t)) break; // solid ink stops a stroke
+        const behind = d.enemies.find((e) => eq(e.pos, t));
+        if (behind) glanced.push(behind);
+      }
+    }
+    if (r.strokeSplash) {
+      for (const v of ORTHO) {
+        const t = add(p.pos, v);
+        const beside = d.enemies.find((e) => eq(e.pos, t) && e.id !== target.id);
+        if (beside && !glanced.includes(beside)) glanced.push(beside);
+      }
+    }
+
+    for (const g of glanced) {
+      g.hp -= p.dmg;
+      const gKilled = g.hp <= 0;
+      ev.push({
+        t: 'bump',
+        phase: 'p',
+        from: { ...p.pos },
+        to: { ...g.pos },
+        dir,
+        dmg: p.dmg,
+        combo: 0,
+        killed: gKilled,
+        kind: g.kind,
+        id: g.id,
+        broke: false,
+        glance: true,
+      });
+      if (gKilled) killEnemy(g, d, g.pos, ev);
+    }
+
     if (killed) {
-      d.enemies = d.enemies.filter((e) => e.id !== target.id);
-      d.stats.kills += 1;
-      ev.push({ t: 'kill', phase: 'p', pos: { ...to }, kind: target.kind });
-
-      /*
-       * Kill the DROLLERY and everything it drew fades with it.
-       *
-       * The fiction says so — they are its marginal scribbles, not creatures —
-       * and the mechanics need it. A boss floor carries no spill, so anything
-       * outliving the boss has no clock behind it at all: measured, a 1-ply bot
-       * kited a single leftover rat around a cleared boss floor for four
-       * thousand turns in 9 runs of 40. It is also the right shape for a boss
-       * fight, because it makes ignoring the adds and bursting the boss down a
-       * real strategy rather than a losing one.
-       *
-       * Not counted as kills. You did not kill them; you killed the hand that
-       * drew them.
-       */
-      if (isBossFloor(d.depth) && target.kind === eraAt(d.depth).boss) {
-        for (const e of d.enemies) {
-          ev.push({ t: 'kill', phase: 'p', pos: { ...e.pos }, kind: e.kind });
-        }
-        d.enemies = [];
-      }
-
-      /*
-       * A kill is ink back on the page, and it clears the trail.
-       *
-       * A KILL, not a swing. Clearing on any stroke was launderable and the
-       * harness found it immediately: strike-move-strike-move never accumulates
-       * a trail at all, so on a crowded board — where there is always something
-       * to swing at — wear costs nothing forever. Measured, one run in sixty sat
-       * at depth 31 with seventeen bodies on the board, one health, and a FULL
-       * charge of ink after three and a half thousand turns on the floor.
-       *
-       * Killing is bounded by what is actually there to kill, so it cannot be
-       * farmed the same way — and it says the design's oldest thesis outright:
-       * aggression that accomplishes something sustains you.
-       */
-      if (r.fadeMax > 0) p.ink = Math.min(r.fadeMax, p.ink + r.fadePerKill);
-      p.trail = [];
-
-      // RALLY: a kill wins back health lost on this floor, and nothing more.
-      // Capped per floor so the spill cannot be farmed into an HP fountain.
-      if (r.rallyPerKill > 0) {
-        const room = Math.min(
-          r.rallyPerKill,
-          p.maxHp - p.hp,
-          d.floorHpLost,
-          Math.max(0, r.rallyFloorCap - d.floorHpRallied),
-        );
-        if (room > 0) {
-          p.hp += room;
-          d.floorHpRallied += room;
-          ev.push({ t: 'pickup', phase: 'p', pos: { ...to }, kind: 'vial', amount: room });
-        }
-      }
+      killEnemy(target, d, to, ev);
 
       // MOMENTUM: the enemy phase is skipped and you act again. Enemies keep the
       // intents they already committed to, so you are moving inside a frozen

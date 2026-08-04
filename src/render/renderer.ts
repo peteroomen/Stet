@@ -2,7 +2,7 @@ import { ENEMY_STATS, intentThreatens } from '../game/enemies';
 import { eraAt, isBossFloor } from '../game/eras';
 import { DIR_VEC, SIZE, add } from '../game/grid';
 import type { MoveOutcome } from '../game/preview';
-import type { Ev, GameState, Vec } from '../game/types';
+import type { Dir, Ev, GameState, Vec } from '../game/types';
 import { Effects } from './effects';
 import {
   FACING_ROTATION,
@@ -31,6 +31,15 @@ import { THEMES, type Theme, type ThemeName } from './theme';
  * Turn timing. Snappy on purpose: a whole turn resolves in about a quarter of a
  * second, so thinking time is yours and animation time is not.
  * ---------------------------------------------------------------------- */
+/**
+ * The cost at which the weight mark is full.
+ *
+ * Roughly a bar of health. Past it the exact figure has stopped informing the
+ * decision — everything above is "this is enormous" — so the mark saturates
+ * rather than growing until it leaves the tile.
+ */
+export const COST_FULL = 6;
+
 export const MOVE_MS = 85;
 /**
  * A stroke's duration scales with what it was worth.
@@ -59,6 +68,11 @@ const WAIT_MS = 70;
 const GAP_MS = 25;
 const ENEMY_MS = 135;
 const TAIL_MS = 40;
+
+/** Stable seed for a cost mark, so its wobble does not reshuffle every frame. */
+function costSeed(s: GameState, dir: Dir): number {
+  return s.player.pos.x * 7919 + s.player.pos.y * 104729 + dir.charCodeAt(0) * 31;
+}
 
 /** 0 for a glancing tap, 1 for a killing blow. Drives every part of the feel. */
 export function strikeWeight(dmg: number, killed: boolean): number {
@@ -103,7 +117,16 @@ export function buildAnim(events: Ev[]): TurnAnim {
     if (ev.t === 'move') {
       playerMotion = { from: ev.from, to: ev.to, t0: 0, t1: MOVE_MS, kind: 'move', weight: 0 };
       playerDur = Math.max(playerDur, MOVE_MS);
-    } else if (ev.t === 'bump') {
+    } else if (ev.t === 'bump' && !ev.glance) {
+      /*
+       * The AIMED blow only.
+       *
+       * A stroke can now land on several things — the reach card carrying
+       * through, the splash card catching what you are touching — and a glance
+       * can be in any direction at all. Taking the hero's lunge from the last
+       * bump in the list would swing them at whatever happened to be caught
+       * last, which on a splash is a tile they never swiped toward.
+       */
       const weight = strikeWeight(ev.dmg, ev.killed);
       strikeMs = lerp(STRIKE_MS, STRIKE_HEAVY_MS, weight);
       playerMotion = { from: ev.from, to: ev.to, t0: 0, t1: strikeMs, kind: 'bump', weight };
@@ -694,7 +717,7 @@ export class Renderer {
     // Last, and over everything. This is now the most important information on
     // the page — a silhouette it covered would be a fair trade, and it sits on
     // tile edges rather than centres so it does not have to make one.
-    this.drawCosts(ctx, g, state, clock, anim, moves);
+    this.drawCosts(ctx, g, state, clock, anim, moves, boil);
 
     this.effects.drawRings(ctx);
     this.effects.drawDrops(ctx);
@@ -1071,6 +1094,7 @@ export class Renderer {
     clock: number,
     anim: TurnAnim,
     moves: MoveOutcome[],
+    boil: number,
   ): void {
     if (moves.length === 0) return;
     // Same settle gate as the telegraphs: no advice about the next turn until
@@ -1101,21 +1125,71 @@ export class Renderer {
       if (m.taken <= 0) continue;
 
       /* --- what it costs you ------------------------------------------- */
-      // INSIDE your own tile, hard against the edge you would leave by. These
-      // are your four options, not properties of your neighbours, and putting
-      // them on the neighbours meant colliding with whatever already lived
-      // there — health pips, telegraphs, the break mark above.
-      // 0.33 rather than hard against the edge: a foe's health pips sit just
-      // over the boundary, and the numeral for the direction it stands in was
-      // landing on top of them.
+      /*
+       * WEIGHED, not numbered.
+       *
+       * Four numerals in a ring around the hero is four things to READ, and the
+       * moment you most need them is the moment you have least time —
+       * surrounded, everything ready. Reported from play as exactly that: "if
+       * you are surrounded by enemies all ready to attack there's a lot of
+       * numbers on the screen".
+       *
+       * So an ordinary cost is struck as a WEIGHT on the edge you would leave
+       * by: a bar whose length and darkness are the price. Four options become a
+       * shape — you see which side of you is heavy and which is clear without
+       * parsing anything — and comparing directions, which is the actual
+       * decision, becomes the thing the drawing is best at.
+       *
+       * A tally of one mark per point was tried first and is wrong, because
+       * exposure doubles: a surrounded board at depth nine costs sixteen and
+       * eighteen, not one and two. Nothing countable survives contact with the
+       * numbers this game actually produces.
+       *
+       * The bar saturates at SIX, which is roughly a full bar of health. Past
+       * that the exact figure has stopped mattering — everything above it is
+       * simply "this is enormous" — and the one number that still does have a
+       * numeral of its own.
+       *
+       * Inside your own tile, because these are your four options and not
+       * properties of your neighbours; on the neighbours they collided with
+       * whatever already lived there.
+       */
+      const ex = px + v.x * g.cell * 0.44;
+      const ey = py + v.y * g.cell * 0.44;
+      const perp = { x: -v.y, y: v.x };
+
+      ctx.save();
+
+      if (!m.lethal) {
+        const heft = clamp01((m.taken - 1) / (COST_FULL - 1));
+        const half = g.cell * (0.11 + 0.23 * heft);
+        inkStroke(
+          ctx,
+          [
+            [ex - perp.x * half, ey - perp.y * half],
+            [ex + perp.x * half, ey + perp.y * half],
+          ] as Pt[],
+          {
+            color: theme.blood,
+            width: g.cell * (0.022 + 0.03 * heft),
+            seed: costSeed(s, m.dir),
+            amp: g.cell * 0.007,
+            alpha: settled * (0.45 + 0.5 * heft),
+            boil,
+            passes: 1,
+          },
+        );
+        ctx.restore();
+        continue;
+      }
+
+      // A cost that ENDS THE RUN keeps its numeral and its ring. It is the one
+      // thing on the board worth stopping to read, and the paper is cleared out
+      // from under it so it can never be lost against a foe behind.
       const cx = px + v.x * g.cell * 0.33;
       const cy = py + v.y * g.cell * 0.33;
       const size = g.cell * (m.lethal ? 0.25 : 0.19);
 
-      ctx.save();
-      ctx.globalAlpha = settled;
-      // A move that ends the run gets the paper cleared out from under it, so it
-      // cannot be lost against a foe or a telegraph behind it.
       ctx.fillStyle = theme.paper;
       ctx.globalAlpha = settled * 0.82;
       ctx.beginPath();

@@ -204,6 +204,15 @@ export type Ev =
       id: number;
       /** Did this stroke break the stance? False = it landed but was shrugged off. */
       broke: boolean;
+      /**
+       * A foe the stroke caught rather than one you aimed at — the reach card
+       * carrying through, or the splash card catching what you were touching.
+       *
+       * The renderer must not take its player motion from one of these: the hero
+       * lunges at the tile you swiped toward, and a glance can be in any
+       * direction at all.
+       */
+      glance: boolean;
     }
   | { t: 'kill'; phase: EvPhase; pos: Vec; kind: EnemyKind }
   | { t: 'emove'; phase: EvPhase; id: number; kind: EnemyKind; from: Vec; to: Vec }

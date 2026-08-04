@@ -108,6 +108,34 @@ export interface Rules {
   waitsPerFloor: number;
 
   /**
+   * Whether NIBs are scattered on the floors.
+   *
+   * Off. Three free +1s a run, on top of a stacking Whetstone, was the only
+   * thing in the game that compounded against a threat budget which saturates —
+   * so damage moved into the card hand where it costs you a mark of margin.
+   * Kept as a flag so the harness can still play the game as it was.
+   */
+  nibsOnFloor: boolean;
+
+  /**
+   * THE LONG NIB. Tiles a stroke carries THROUGH, past the one you aimed at.
+   * 0 = off.
+   *
+   * Only ever set by a card. A blot stops it — solid ink stops a stroke — and
+   * what it catches on the way through can never be interrupted, only damaged.
+   */
+  strokeReach: number;
+
+  /**
+   * THE BROAD NIB. A stroke also catches every other foe you are touching.
+   *
+   * Only ever set by a card, and like the reach it cannot break a stance. These
+   * two are the answer to being surrounded that does not make being surrounded
+   * safe: you clear faster, and everything you did not aim at still swings.
+   */
+  strokeSplash: boolean;
+
+  /**
    * Combo bonus ceiling. Four swings in and you are at +3; the risk stops
    * scaling too. A rule rather than a constant so the LONG MEMORY trait can
    * raise it, and so the harness can sweep it.
@@ -285,6 +313,9 @@ export const SHIPPED: Rules = {
   allowWait: true,
   waitCost: 1,
   waitsPerFloor: 2,
+  nibsOnFloor: false,
+  strokeReach: 0,
+  strokeSplash: false,
   comboCap: 3,
   traitsPerDescent: 3,
   maxTraits: 6,

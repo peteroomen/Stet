@@ -91,11 +91,20 @@ export const TRAITS: Trait[] = [
     once: true,
     rules: () => ({ flowBonus: 2 }),
   },
+  /*
+   * Once, for the same reason Whetstone is.
+   *
+   * With damage capped it simply became the next thing to stack: measured, a
+   * 3-ply greedy build took Vellum 75 times across 59 runs — two or three of a
+   * six-mark margin spent on the same card. The margin holds six marks, and it
+   * should have to hold six IDEAS.
+   */
   {
     id: 'vellum',
     name: 'Vellum',
     line: 'One more heart.',
     axis: 'defence',
+    once: true,
     player: (p) => {
       p.maxHp += 1;
       p.hp += 1;
@@ -132,13 +141,74 @@ export const TRAITS: Trait[] = [
     once: true,
     rules: () => ({ rallyPerKill: 1, rallyFloorCap: 2 }),
   },
+  /*
+   * ONCE, and it used to stack.
+   *
+   * Stacking damage was the run's only real build, and it swallowed everything
+   * else: a greedy chooser took this every offer it appeared in, and on top of
+   * up to three NIBs off the board the ceiling simply stopped being reachable —
+   * "I can get a bunch of nib and play forever". The nibs are gone from the
+   * floors and this is now one mark like most of the others, so a six-mark
+   * margin has to hold six different ideas.
+   */
   {
     id: 'whetstone',
     name: 'Whetstone',
     line: 'Every stroke carries one more.',
     axis: 'offence',
+    once: true,
     player: (p) => {
       p.dmg += 1;
+    },
+  },
+  /*
+   * THE LONG NIB and THE BROAD NIB — reach and breadth.
+   *
+   * Neither can break a stance; see engine.ts. They buy you tempo against a
+   * crowd without buying you safety in one, which is the line these have to walk
+   * — being surrounded should stay frightening and stop being hopeless.
+   */
+  {
+    id: 'long-nib',
+    name: 'The Long Nib',
+    line: 'Your stroke carries through to whatever stands behind.',
+    axis: 'offence',
+    once: true,
+    rules: () => ({ strokeReach: 1 }),
+  },
+  {
+    id: 'broad-nib',
+    name: 'The Broad Nib',
+    line: 'Your stroke catches every foe you are touching.',
+    axis: 'offence',
+    once: true,
+    rules: () => ({ strokeSplash: true }),
+  },
+  /*
+   * MOMENTUM as a card rather than a rule of the game.
+   *
+   * The harness's favourite arcade lever and far too strong as a default — it
+   * turns a crowd from a death sentence into a chain. As one mark of six it is a
+   * build: it pairs obviously with the broad nib, and a glance kill deliberately
+   * does NOT grant the action, so the pair clears faster without becoming an
+   * engine that runs itself.
+   */
+  {
+    id: 'momentum',
+    name: 'Momentum',
+    line: 'A kill you aimed at does not end your turn.',
+    axis: 'tempo',
+    once: true,
+    rules: () => ({ killGrantsActions: 1 }),
+  },
+  {
+    id: 'foolscap',
+    name: 'Foolscap',
+    line: 'One more layer of gesso, laid over the page.',
+    axis: 'defence',
+    once: true,
+    player: (p) => {
+      p.ward += 1;
     },
   },
   /*

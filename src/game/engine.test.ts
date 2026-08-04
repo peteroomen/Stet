@@ -440,6 +440,129 @@ describe('the typebar — a line, not a tile', () => {
 
 
 
+/**
+ * Reach and breadth, and the one rule they are both built around: only the foe
+ * you AIMED at can be interrupted. Interrupting is the game's defensive move and
+ * it has always been one a turn — a card that broke four stances at once would
+ * not be a wider stroke, it would be immunity to being surrounded.
+ */
+describe('a stroke that catches more than one thing', () => {
+  const withRules = (over: Partial<GameState['rules']>, s: GameState): GameState => ({
+    ...s,
+    rules: { ...s.rules, ...over },
+  });
+
+  it('THE LONG NIB carries the stroke through to what stands behind', () => {
+    const front = makeEnemy(1, 'warden', at(3, 2), 0);
+    const back = makeEnemy(2, 'warden', at(4, 2), 0);
+    const s = replan(withRules({ strokeReach: 1 }, board({ enemies: [front, back] })));
+
+    const r = step(s, 'right');
+    const byId = new Map(r.state.enemies.map((e) => [e.id, e]));
+    expect(byId.get(1)!.hp).toBe(ENEMY_STATS.warden.hp - 1);
+    expect(byId.get(2)!.hp).toBe(ENEMY_STATS.warden.hp - 1);
+  });
+
+  it('carries nothing when you did not strike anything', () => {
+    // An empty tile in front is a STEP, not a stroke — the reach must not turn
+    // walking toward a foe into hitting it.
+    const back = makeEnemy(1, 'warden', at(4, 2), 0);
+    const s = replan(withRules({ strokeReach: 1 }, board({ enemies: [back] })));
+
+    const r = step(s, 'right');
+    expect(r.state.player.pos).toEqual(at(3, 2));
+    expect(r.state.enemies[0].hp).toBe(ENEMY_STATS.warden.hp);
+  });
+
+  it('is stopped by a blot, because solid ink stops a stroke', () => {
+    // Player at the left margin so a four-tile line fits: hero, foe, blot, foe.
+    const front = makeEnemy(1, 'rat', at(1, 2), 0);
+    const behind = makeEnemy(2, 'warden', at(3, 2), 0);
+    const s = replan(
+      withRules(
+        { strokeReach: 2 },
+        board({
+          enemies: [front, behind],
+          blots: [at(2, 2)],
+          player: { ...board().player, pos: at(0, 2) },
+        }),
+      ),
+    );
+
+    const r = step(s, 'right');
+    expect(r.state.enemies.some((e) => e.id === 1)).toBe(false); // the rat folded
+    // The warden is past the blot, so the stroke never got there.
+    expect(r.state.enemies.find((e) => e.id === 2)!.hp).toBe(ENEMY_STATS.warden.hp);
+  });
+
+  it('THE BROAD NIB catches every other foe you are touching', () => {
+    const aimed = makeEnemy(1, 'warden', at(3, 2), 0);
+    const beside = makeEnemy(2, 'warden', at(2, 1), 0);
+    const also = makeEnemy(3, 'warden', at(1, 2), 0);
+    const s = replan(
+      withRules({ strokeSplash: true }, board({ enemies: [aimed, beside, also] })),
+    );
+
+    const r = step(s, 'right');
+    for (const id of [1, 2, 3]) {
+      expect(r.state.enemies.find((e) => e.id === id)!.hp).toBe(ENEMY_STATS.warden.hp - 1);
+    }
+  });
+
+  /*
+   * The load-bearing limit. A glance lands but never breaks, so being surrounded
+   * stays frightening even with the widest stroke in the game.
+   */
+  it('never breaks a stance it was not aimed at', () => {
+    const aimed = makeEnemy(1, 'rat', at(3, 2), 0);
+    const beside = makeEnemy(2, 'rat', at(1, 2), 0);
+    const s = replan(
+      withRules({ strokeSplash: true }, board({ enemies: [aimed, beside] })),
+    );
+
+    const r = step(s, 'right');
+    const glances = r.events.filter((e) => e.t === 'bump' && e.glance);
+    expect(glances).toHaveLength(1);
+    expect(glances[0]).toMatchObject({ broke: false, combo: 0 });
+  });
+
+  it('a glance carries no combo, so the ladder is still worth building', () => {
+    const bag = makeEnemy(1, 'warden', at(3, 2), 0);
+    bag.hp = bag.maxHp = 99;
+    const beside = makeEnemy(2, 'warden', at(1, 2), 0);
+    beside.hp = beside.maxHp = 99;
+    let s = replan(withRules({ strokeSplash: true }, board({ enemies: [bag, beside] })));
+
+    const aimedDmg: number[] = [];
+    const glanceDmg: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const r = step(s, 'right');
+      for (const e of r.events) {
+        if (e.t !== 'bump') continue;
+        (e.glance ? glanceDmg : aimedDmg).push(e.dmg);
+      }
+      s = { ...r.state, screen: 'playing', player: { ...r.state.player, hp: 6 } };
+    }
+    expect(aimedDmg).toEqual([1, 2, 3]); // the ladder climbs where you aimed
+    expect(glanceDmg).toEqual([1, 1, 1]); // and nowhere else
+  });
+
+  it('a kill you only glanced does not hand you a free action', () => {
+    const aimed = makeEnemy(1, 'warden', at(3, 2), 0);
+    const beside = makeEnemy(2, 'rat', at(1, 2), 0); // dies to a single glance
+    const s = replan(
+      withRules({ strokeSplash: true, killGrantsActions: 1 }, board({ enemies: [aimed, beside] })),
+    );
+
+    const r = step(s, 'right');
+    expect(r.state.stats.kills).toBe(1);
+    // The turn resolved: a splash card plus MOMENTUM must not become an engine
+    // that runs itself off whatever happens to be standing nearby.
+    expect(r.state.chain).toBe(0);
+    expect(r.events.some((e) => e.t === 'emove' || e.t === 'eattack' || e.t === 'wind')).toBe(true);
+  });
+});
+
 describe('floor flow', () => {
   it('stairs stay sealed until the floor is clear, then unseal', () => {
     const s = replan(

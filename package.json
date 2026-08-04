@@ -14,6 +14,7 @@
     "check:swipe": "vite build && node scripts/swipe-check.mjs",
     "shots:brush": "node scripts/brush-shots.mjs",
     "shots:strike": "vite build && node scripts/strike-frames.mjs",
+    "shots:costs": "vite build && node scripts/costs-shot.mjs",
     "check:cards": "vite build && node scripts/cards-check.mjs",
     "check:drown": "vite build && node scripts/drown-check.mjs"
   },

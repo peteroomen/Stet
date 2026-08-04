@@ -290,7 +290,19 @@ unhittable, since you strike orthogonally. Forcing it to step square-on gives
 you exactly one clearly telegraphed turn to hit it first.
 
 Ink blots are cover, chokepoints, and something for a charger to crash into.
-Vials restore health; a **nib** permanently raises your damage.
+**Gesso** is a layer laid over the page that takes blows before your health does
+and can never be mended; vials restore health under rule variants that have them.
+
+**Damage is not on the floor.** The NIB used to lie around waiting to be walked
+over — three a run, +1 each, on top of a Whetstone that stacked. It was the only
+thing in the game that compounded against a threat budget which saturates, and it
+was reported from play exactly that way: *"nib is OP… I can get a bunch of nib and
+play forever."* Damage now costs a mark of margin like everything else, so taking
+it means giving something else up. What stays on the board is what does **not**
+compound: a layer is spent once, and a heal is spent at once.
+
+The margin holds six marks, and nothing in the pool stacks except the combo
+ladder — so six marks have to be six ideas rather than the same one six times.
 
 ---
 
