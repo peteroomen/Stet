@@ -375,6 +375,52 @@ twenty-six, in the same country as the carriage return's twenty-five, and like i
 it is read off `floorTurns` alone: interrupting the machine cancels the blow you
 were about to eat and never stops the page being selected.
 
+### The page around the board
+
+The board is a square, and a phone is not — so half of every screen was blank
+cream. What went into it is what a book puts there.
+
+A **running head** at the top: the era's name in small caps, the folio beside it,
+a hairline rule under it. A **footnote** at the foot, under its own rule, holding
+the one line about the turn you are in. And in the deeper of the two margins,
+**the marginalia you have taken** — name, rule, hairline between, wrapped rather
+than truncated. They were always in the game, behind an unlabelled `❧ 2` in the
+corner, and *"I don't see the cards I picked anywhere"* is what a build you have
+to go and look up actually costs. They are called marginalia; the page has a
+margin; the margin was empty.
+
+All of it is set in the era's own face — the serif, then the monospace, then the
+UI sans — off a `data-era` attribute, so the furniture changes hand when the
+board does.
+
+Two bugs came out of measuring rather than eyeballing it. A canvas is a replaced
+element whose width/height *attributes* are an intrinsic size, and the renderer
+sets those from `clientWidth`; in the normal flow that closes a loop, and the
+canvas had settled at **411×878 inside a 371-wide page**, with `overflow: hidden`
+cutting the difference off the right. And a grid item's `min-width` is `auto`, so
+the row of nowrap readouts in the HUD was sizing the whole column. *That* is what
+"the gold ornamentation runs off the screen" was: not an ornament too big for the
+page, a page too big for the screen.
+
+The board is also inset to 92% of the shorter side, because the illuminated band
+lives outside the play frame by design and needs somewhere to be. It costs about
+five pixels a cell, out of half a screen of reclaimed height.
+
+### The era, on a page of its own
+
+An era is the only thing in the game that changes what the game *is*, so arriving
+in one gets a page to itself — and on that page the name is not set, it is
+**written**, a letter at a time, by whatever writes that era. A brush lays each
+letter down under a left-to-right wipe, so you watch the stroke travel. A
+typewriter does not travel at all: each letter is *struck*, arriving whole, a
+hair off its place and off square, at whatever the ribbon had left. A word
+processor is instant and exact, with a block caret waiting at the end.
+
+Each letter fires `sfx.step()`, which is already branched per era, so the writing
+sounds like the writing. Page one names the manuscript — `isEraOpening` is false
+there, which is right for the card hand and would have left one era in three
+never named and the best of the three hands never seen.
+
 ## The floor
 
 Clear every foe to break the wax seal on the stairs. The stairs are visible from
@@ -534,6 +580,21 @@ compound: a layer is spent once, and a heal is spent at once.
 
 The margin holds six marks, and nothing in the pool stacks except the combo
 ladder — so six marks have to be six ideas rather than the same one six times.
+
+**A card may use a jargon word only if the word is defined in one place.** The
+set is closed and lives in `game/keywords.ts` — *stroke*, *break*, *combo*,
+*mid-swing*, *hold*, *gesso*, *spill*, *dodge* — and a marked word is set in
+small caps carrying its own definition on touch. That is what makes "your next
+**stroke** carries +2 and always **breaks**" fair rather than obscure: it is
+shorter and more exact than any paraphrase, and every word in it is one you can
+find out the meaning of without leaving the card.
+
+The rule came out of FOOLSCAP, which was called Foolscap and gave you Gesso —
+two obscure words for one mechanic, reported exactly that way: *"explain
+foolscap/gesso, it's a mystery to me"*. Flavour you have to look up is a card the
+player cannot evaluate, and a choice you cannot evaluate is not a choice. Three
+tests keep the vocabulary honest: every marked word resolves, every defined word
+is used by some card, and every line fits in seventy-four characters.
 
 ---
 
@@ -826,9 +887,20 @@ turn, so the rules looked perfectly fair while the game ate your health.
 
 ## Debugging
 
-`window.__stet` exposes the live runtime. `__stet.jumpTo(9)` rebuilds the run at
-depth 9 (a warden takes seven floors to reach honestly, which is far too slow a
-loop for tuning how one looks and sounds); `__stet.kill()` ends the run.
+**`?dev=1`** puts a cheat panel in the corner: jump to any era or its boss, step
+the page up and down, clear a floor, add hearts, gesso or damage, and take any
+marginalia outright. Behind a query parameter rather than a keystroke or a build
+flag — a keystroke is something a player finds by accident, and a build flag
+means the thing you are testing is not the thing you ship.
+
+Everything in it goes through the runtime rather than editing state in place, so
+a cheated board is still a board the engine agrees with: the preview is
+recomputed and the HUD is pushed exactly as they are on a real turn.
+
+`window.__stet` exposes the live runtime for the same work from a console.
+`__stet.jumpTo(9)` rebuilds the run at depth 9 (a warden takes seven floors to
+reach honestly, which is far too slow a loop for tuning how one looks and
+sounds); `__stet.kill()` ends the run.
 
 `node scripts/shots.mjs` drives the built game in a real browser and captures the
 states worth looking at, failing on any console error.

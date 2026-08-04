@@ -220,10 +220,20 @@ export const THEMES: Record<ThemeName, Theme> = {
  * Takes the era's palette too, or the chrome keeps wearing era I while the board
  * has moved on — the HUD, the cards and the state line all read these vars.
  */
-export function applyThemeVars(name: ThemeName, palette: EraPalette = {}): void {
+export function applyThemeVars(name: ThemeName, palette: EraPalette = {}, era = 'manuscript'): void {
   const t = themeFor(name, palette);
   const root = document.documentElement;
   root.dataset.theme = name;
+  /*
+   * The era, for the chrome's typeface.
+   *
+   * The board changes hand on a descent and the running head did not, so the
+   * page was set in a Renaissance serif while the thing on it was being struck
+   * by a machine. A data attribute rather than another CSS variable written from
+   * here, because what changes is a whole family of rules — face, tracking,
+   * case — and those belong in the stylesheet next to each other.
+   */
+  root.dataset.era = era;
   for (const [k, v] of Object.entries(t)) root.style.setProperty(`--${k}`, v);
   document
     .querySelector('meta[name="theme-color"]')

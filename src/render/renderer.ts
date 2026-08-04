@@ -78,6 +78,13 @@ const ENEMY_MS = 135;
  * simply appears on a tile they never walked to.
  */
 const SHOVE_MS = 130;
+/**
+ * The page turning on a descent.
+ *
+ * Short on purpose: you will see it forty times in a good run, so it has to be
+ * over before it can become something to sit through.
+ */
+const PAGE_TURN_MS = 420;
 const TAIL_MS = 40;
 
 /** Stable seed for a cost mark, so its wobble does not reshuffle every frame. */
@@ -354,6 +361,40 @@ export interface Geometry {
   size: number;
   pad: number;
   cell: number;
+}
+
+/**
+ * How much of the shorter side the board is allowed to take.
+ *
+ * It used to be all of it, and the illuminated band paid for that: the gilding
+ * sits outside the play frame by design — decoration that competes with the
+ * board is decoration that makes the game worse — so at full bleed its corner
+ * volutes ran off the edge of the canvas and were clipped on every floor of era
+ * I. Eight per cent back is about five pixels a cell on a phone, and the page
+ * has half a screen of unused height to pay it out of.
+ */
+const BOARD_FIT = 0.92;
+
+/**
+ * Where the square board sits on the page.
+ *
+ * One function because three things need to agree: the renderer draws from it,
+ * the effects layer aims particles through it, and the React chrome positions
+ * the margin under it. When they disagreed the grid drifted off the pieces
+ * standing on it, which is the bug this shape exists to make impossible.
+ *
+ * The vertical bias is a typographic one rather than a technical one. A text
+ * block centred in a page reads as floating; every book ever set puts it above
+ * centre, with the deeper margin at the foot — and that deeper margin is exactly
+ * where the marginalia go.
+ */
+export function layout(cssW: number, cssH: number): { size: number; ox: number; oy: number } {
+  const size = Math.min(cssW, cssH) * BOARD_FIT;
+  return {
+    size,
+    ox: (cssW - size) / 2,
+    oy: Math.max((cssH - size) * 0.06, (cssH - size) * 0.34),
+  };
 }
 
 export function geometry(size: number): Geometry {
@@ -969,6 +1010,15 @@ export class Renderer {
     this.paperKey = '';
   }
 
+  /**
+   * Wall-clock time the last page was turned, or -1 for never.
+   *
+   * Set by the runtime off the `descend` cue. A leaf sweeping across is the one
+   * piece of ceremony a descent had no way to express: the board simply became a
+   * different board, which reads as a teleport rather than as progress.
+   */
+  pageTurnAt = -1;
+
   /** Called on theme change: cached glyphs are tinted, so they must be redrawn. */
   invalidateGlyphs(): void {
     clearGlyphCache();
@@ -995,7 +1045,7 @@ export class Renderer {
       this.invalidatePaper();
     }
 
-    const size = Math.min(cssW, cssH);
+    const { size, ox, oy } = layout(cssW, cssH);
     const g = geometry(size);
     /*
      * The instrument this floor is drawn with.
@@ -1029,9 +1079,6 @@ export class Renderer {
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
-
-    const ox = (cssW - size) / 2;
-    const oy = (cssH - size) / 2;
 
     const key = `${cssW}x${cssH}:${size}:${this.themeName}:${era.id}:${state.depth}:${dpr}`;
     if (!this.paper || this.paperKey !== key) {
@@ -1081,6 +1128,71 @@ export class Renderer {
       ctx.fillRect(0, 0, cssW, cssH);
       ctx.restore();
     }
+
+    this.drawPageTurn(ctx, cssW, cssH, wallClock, theme);
+  }
+
+  /**
+   * The page turning, over the top of everything.
+   *
+   * A leaf lifting off the right edge and sweeping left, with the light catching
+   * its curl. Drawn AFTER the new floor rather than as a transition between two
+   * boards, which is the cheap way and also the right one: what you are watching
+   * is the old page coming away, and the new one has been underneath it the whole
+   * time. Nothing is captured, nothing is double-buffered, and the whole thing is
+   * three gradients.
+   *
+   * Deliberately short. It plays on every descent, and a flourish you will see
+   * forty times in a run must be over before you can be annoyed by it — which is
+   * also why a true curl was not built: a folded leaf reads as slow at any speed
+   * that is fair to the combat's timing.
+   */
+  private drawPageTurn(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    wall: number,
+    theme: Theme,
+  ): void {
+    if (this.pageTurnAt < 0) return;
+    const p = (wall - this.pageTurnAt) / PAGE_TURN_MS;
+    if (p < 0 || p >= 1) {
+      if (p >= 1) this.pageTurnAt = -1;
+      return;
+    }
+
+    // Eased so it leaves fast and settles, like a leaf that has been let go of.
+    const e = easeOutCubic(p);
+    // The leading edge travels from the right margin to past the left one.
+    const edge = w * 1.06 - w * 1.16 * e;
+    const lift = h * 0.012 * Math.sin(p * Math.PI);
+
+    ctx.save();
+    ctx.globalAlpha = 1 - p * 0.12;
+
+    // The leaf itself: the page's own colour, a touch deeper toward the spine so
+    // it reads as a surface with a thickness rather than as a wipe.
+    ctx.translate(0, -lift);
+    const face = ctx.createLinearGradient(edge, 0, w, 0);
+    face.addColorStop(0, theme.paper);
+    face.addColorStop(0.82, theme.paper);
+    face.addColorStop(1, theme.paperDeep);
+    ctx.fillStyle = face;
+    ctx.fillRect(edge, -lift, w - edge + 2, h + lift * 2);
+
+    // The curl: a bright rule right on the edge with the shadow it casts on the
+    // page underneath. This is the whole illusion — without the shadow the leaf
+    // is a rectangle sliding, and with it the page beneath is lower down.
+    const curl = ctx.createLinearGradient(edge - w * 0.055, 0, edge, 0);
+    curl.addColorStop(0, 'rgba(0,0,0,0)');
+    curl.addColorStop(1, 'rgba(0,0,0,0.16)');
+    ctx.fillStyle = curl;
+    ctx.fillRect(edge - w * 0.055, -lift, w * 0.055, h + lift * 2);
+
+    ctx.globalAlpha = (1 - p * 0.12) * 0.9;
+    ctx.fillStyle = theme.paperDeep;
+    ctx.fillRect(edge, -lift, Math.max(1, w * 0.004), h + lift * 2);
+    ctx.restore();
   }
 
   /**

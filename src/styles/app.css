@@ -36,6 +36,20 @@ body {
   transition: background 220ms var(--ease);
 }
 
+/*
+ * No row may widen the page.
+ *
+ * A grid item's `min-width` is `auto`, which means it refuses to shrink below
+ * its content's minimum — and a row of nowrap readouts has a large one. So the
+ * single column was being sized by the HUD rather than by the page: 411px of
+ * column inside a 371px content box, with `overflow: hidden` quietly cutting
+ * the difference off the right-hand side. The board is drawn to the canvas, and
+ * the canvas was in that column, so the board went off the page with it.
+ */
+.app > * {
+  min-width: 0;
+}
+
 /* ---------------------------------------------------------------- board -- */
 
 .stage {
@@ -46,7 +60,21 @@ body {
   touch-action: none;
 }
 
+/*
+ * Sized by its box and never by itself.
+ *
+ * A canvas is a replaced element: its width/height ATTRIBUTES are an intrinsic
+ * size, and the renderer sets those from `clientWidth * dpr` every frame. Left
+ * in the normal flow that closes a loop — the backing store feeds the intrinsic
+ * ratio, which feeds the layout, which feeds the backing store — and it settled
+ * on 411x878 inside a 371-wide page. Everything drawn near the edge of the
+ * board was then off the screen, which is what "the gold ornamentation runs off
+ * the screen" actually was. Taking it out of flow breaks the loop: the box
+ * decides, and the canvas can only agree.
+ */
 .board {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
@@ -55,23 +83,74 @@ body {
 
 /* ------------------------------------------------------------------ hud -- */
 
+/*
+ * The running head.
+ *
+ * A hairline under it, because that is what turns a row of readouts into the
+ * head of a page. The rule is the era's own ink at a low alpha rather than a
+ * border colour of its own — one source of truth for every line on this page,
+ * drawn or set.
+ */
 .hud {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.7rem 0.35rem 0.5rem;
+  padding: 0.6rem 0.9rem 0.4rem;
+  margin: 0 0.4rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--inkSoft) 34%, transparent);
+  font-family: var(--face);
   font-size: var(--hud);
-  letter-spacing: var(--track);
+  letter-spacing: var(--faceTrack);
   text-transform: uppercase;
   color: var(--inkSoft);
 }
 
 .hud__slot {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.5rem;
   min-width: 0;
+}
+
+/*
+ * The work's name, on every leaf.
+ *
+ * Ellipsised rather than wrapped: the head is one line by definition, and a
+ * running head that reflows is a running head that moves the folio around.
+ */
+.hud__era {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.75;
+  font-variant: small-caps;
+  letter-spacing: 0.1em;
+}
+
+/*
+ * On a narrow page the folio wins.
+ *
+ * A running head that has been ellipsised down to "THE MAN…" is worse than no
+ * running head: it is the same width of clutter carrying none of the meaning,
+ * and the era is named on its own page when you arrive on it anyway.
+ */
+/* The numeral is the compact form of the same information. One or the other. */
+.hud__eraNum {
+  display: none;
+  color: var(--blood);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 26rem) {
+  .hud__era {
+    display: none;
+  }
+  .hud__eraNum {
+    display: inline;
+  }
 }
 
 .hud__slot--right {
@@ -182,6 +261,13 @@ body {
 
 /* ---------------------------------------------------------------- state -- */
 
+/*
+ * The footnote.
+ *
+ * Set below a rule, like the note it is: everything here is a remark about the
+ * turn you are in rather than part of the page. The rule matches the running
+ * head's, so the text block above is framed top and bottom.
+ */
 .state {
   display: flex;
   align-items: center;
@@ -189,9 +275,12 @@ body {
   gap: 0.6rem;
   min-height: 2.1rem;
   /* Right padding keeps the line clear of the icon buttons. */
-  padding: 0.3rem 3.2rem 0.55rem;
+  padding: 0.4rem 3.2rem 0.55rem;
+  margin: 0 1.3rem;
+  border-top: 1px solid color-mix(in srgb, var(--inkSoft) 26%, transparent);
+  font-family: var(--face);
   font-size: var(--hud);
-  letter-spacing: var(--track);
+  letter-spacing: var(--faceTrack);
   text-transform: uppercase;
 }
 
@@ -349,7 +438,8 @@ body {
 
 /* The hand. Gilded, because this is the one moment that is not about being hit. */
 .overlay--cards {
-  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  /* Nearly opaque: it is a page of its own, not a wash over the board. */
+  background: color-mix(in srgb, var(--paper) 97%, transparent);
 }
 
 .cards__depth {
@@ -358,6 +448,11 @@ body {
   letter-spacing: var(--track);
   text-transform: uppercase;
   color: var(--ghost);
+}
+
+.panel,
+.cards__title {
+  font-family: var(--face);
 }
 
 .cards__title {
@@ -783,4 +878,206 @@ body {
   .exposed {
     animation-duration: 1ms;
   }
+}
+
+/* ------------------------------------------------------- the margin note -- */
+
+/*
+ * What you have taken, written in the page's deeper margin.
+ *
+ * Positioned off `--board-foot`, which App measures through the same `layout()`
+ * the renderer draws the board from. The board is a square inside a canvas of
+ * unknown proportion — there is no percentage that describes the bottom of it,
+ * and every value guessed at in CSS drifted off it on some viewport.
+ *
+ * A button, because the full text and the keyword glosses are in the ledger and
+ * this is the standing reminder rather than a replacement for it.
+ */
+.notes {
+  position: absolute;
+  left: 1.4rem;
+  right: 1.4rem;
+  top: calc(var(--board-foot, 66%) + 0.9rem);
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.05rem;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--face);
+}
+
+.notes--empty {
+  display: none;
+}
+
+.note {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  padding: 0.3rem 0.1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--inkSoft) 16%, transparent);
+  /* Hairline rules and small type: this is an annotation, not a panel. */
+  font-size: clamp(0.6rem, 2.3vmin, 0.76rem);
+  line-height: 1.25;
+}
+
+.note:last-child {
+  border-bottom: 0;
+}
+
+.note__name {
+  flex: 0 0 auto;
+  color: var(--ink);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.note__name em {
+  font-style: normal;
+  opacity: 0.7;
+}
+
+/*
+ * Wraps rather than truncates. There is a whole lower margin to spend and a
+ * rule you can only read half of is not a rule you have been told.
+ */
+.note__line {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--inkSoft);
+}
+
+/* A rare stays gold wherever it is written down. */
+.note--rare .note__name {
+  color: var(--gold);
+}
+
+/* ----------------------------------------------------------- keywords --- */
+
+/*
+ * A word the game is allowed to use as jargon.
+ *
+ * Set apart rather than merely bolded — small caps in the ink colour — and it
+ * carries its own definition on hover and on touch. The rule behind it is in
+ * game/keywords.ts: the set is closed, and a word in bold is always a word you
+ * can find out the meaning of.
+ */
+.kw {
+  color: var(--ink);
+  font-weight: 700;
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+  cursor: help;
+  border-bottom: 1px dotted color-mix(in srgb, var(--ink) 40%, transparent);
+}
+
+/* ---------------------------------------------------------- the era card - */
+
+/*
+ * The era, named on a page of its own.
+ *
+ * No panel and no border: the point is that the name is written ON the page you
+ * have just turned to, so the only thing over the board is the ink.
+ */
+.overlay--era {
+  /* Nearly opaque: it is a page of its own, not a wash over the board. */
+  background: color-mix(in srgb, var(--paper) 97%, transparent);
+  cursor: pointer;
+}
+
+.eracard {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* --------------------------------------------------------------- dev ----- */
+
+/*
+ * Cheat controls, behind `?dev=1`. Deliberately ugly: it is not part of the
+ * game, it must never be mistaken for part of the game, and a monospace box in
+ * the corner is the clearest way to say so.
+ */
+.dev {
+  position: fixed;
+  right: 0.4rem;
+  bottom: 0.4rem;
+  z-index: 40;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.dev--tab {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--inkSoft);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--inkSoft);
+  opacity: 0.5;
+  cursor: pointer;
+}
+
+.dev--tab:hover {
+  opacity: 1;
+}
+
+.dev--open {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  max-width: min(22rem, calc(100vw - 1rem));
+  padding: 0.5rem 0.55rem;
+  border: 1px solid var(--inkSoft);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
+}
+
+.dev__row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.dev__row--wrap {
+  flex-wrap: wrap;
+}
+
+.dev__label {
+  flex: 0 0 2.6rem;
+  color: var(--ghost);
+}
+
+.dev__num {
+  min-width: 1.4rem;
+  text-align: center;
+}
+
+.dev button {
+  padding: 0.15rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--inkSoft) 50%, transparent);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.dev button:hover {
+  background: color-mix(in srgb, var(--inkSoft) 14%, transparent);
+}
+
+.dev button.is-on {
+  background: var(--ink);
+  color: var(--paper);
 }

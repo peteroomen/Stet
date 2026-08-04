@@ -25,14 +25,24 @@ page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
 page.on('console', (m) => m.type() === 'error' && console.log('CONSOLE', m.text()));
 await page.goto(base, { waitUntil: 'networkidle' });
 await page.click('.btn');
-await page.waitForTimeout(400);
 
-for (const [name, depth] of [['manuscript', 3], ['typewriter', 6], ['boss', 8], ['wordprocessor', 10], ['boss3', 12], ['opening', 5]]) {
+/*
+ * Page one names the manuscript, so the run opens on the brushed title — and it
+ * has to be shot and then dismissed, or it would still be standing over the
+ * first board in the loop below.
+ */
+await page.waitForTimeout(760);
+await page.screenshot({ path: join(OUT, 'era-opening1-written.png') });
+console.log('wrote shots/era-opening1-written.png');
+await page.click('.overlay--era');
+await page.waitForTimeout(300);
+
+for (const [name, depth] of [['manuscript', 3], ['typewriter', 6], ['boss', 8], ['wordprocessor', 10], ['boss3', 12], ['opening', 5], ['opening3', 9]]) {
   await page.evaluate((d) => {
     const rt = window.__stet;
     const mk = (id, kind, x, y, ready) => ({ id, kind, pos: { x, y }, hp: 3, maxHp: 5, ready, struck: false, poise: true, intent: { kind: 'hold', path: [] }, seed: id * 17 + 3 });
     const boss = d === 8 || d === 12;
-    if (d === 5) {
+    if (d === 5 || d === 9) {
       /*
        * A REAL descent from the last floor of era I into the first of era II.
        * Faking the cue left the board showing the previous fixture, which is
@@ -42,7 +52,7 @@ for (const [name, depth] of [['manuscript', 3], ['typewriter', 6], ['boss', 8], 
       const above = st.y > 0;
       rt.state = {
         ...rt.state,
-        depth: 4,
+        depth: d - 1,
         screen: 'playing',
         enemies: [],
         stairsOpen: true,
@@ -53,6 +63,8 @@ for (const [name, depth] of [['manuscript', 3], ['typewriter', 6], ['boss', 8], 
       return;
     }
     rt.state = { ...rt.state, depth: d, blots: boss ? [] : [{ x: 1, y: 3 }], stairsOpen: false,
+      // A build in the margin, so the shot shows the page as it is actually read.
+      traits: ['whetstone', 'vellum', 'long-nib'],
       // Well into the fight, so the band has widened and the bell has rung twice.
       floorTurns: boss ? 10 : 0, floorWaits: 0,
       items: boss ? [] : [{ id: 900, kind: 'gesso', pos: { x: 4, y: 0 }, seed: 5 }],
@@ -71,9 +83,24 @@ for (const [name, depth] of [['manuscript', 3], ['typewriter', 6], ['boss', 8], 
       rt.input('wait');
     }
   }, depth);
-  await page.waitForTimeout(name === 'opening' ? 260 : 1100);
+  const opening = name.startsWith('opening');
+  await page.waitForTimeout(opening ? 260 : 1100);
   await page.screenshot({ path: join(OUT, `era-${name}.png`) });
   console.log(`wrote shots/era-${name}.png`);
+
+  /*
+   * The title card twice: caught mid-write, and finished.
+   *
+   * The whole claim of that screen is that the name is WRITTEN rather than set,
+   * and a single frame of it cannot show that. One shot at 260ms shows the hand
+   * partway along; one at 1.6s shows what it settles into, before the card
+   * stands down of its own accord.
+   */
+  if (opening) {
+    await page.waitForTimeout(620);
+    await page.screenshot({ path: join(OUT, `era-${name}-written.png`) });
+    console.log(`wrote shots/era-${name}-written.png`);
+  }
 }
 await browser.close();
 server.close();

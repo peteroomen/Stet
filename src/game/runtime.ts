@@ -1,13 +1,21 @@
 import { sfx } from '../audio/sfx';
 import { Effects } from '../render/effects';
-import { EMPTY_ANIM, Renderer, buildAnim, strikeWeight, type TurnAnim } from '../render/renderer';
+import {
+  EMPTY_ANIM,
+  Renderer,
+  buildAnim,
+  layout,
+  strikeWeight,
+  type TurnAnim,
+} from '../render/renderer';
 import { applyThemeVars, type ThemeName } from '../render/theme';
 import { eraAt } from './eras';
 import { chooseTrait, demoState, newGame, step } from './engine';
 import { MAX_ENEMIES } from './grid';
 import { previewMoves, underThreat, type MoveOutcome } from './preview';
 import { randomSeed } from './rng';
-import type { Action, Ev, GameState } from './types';
+import { TRAIT_BY_ID, applyTraitRules } from './traits';
+import { cloneState, type Action, type Ev, type GameState } from './types';
 
 /**
  * Accept the next input once the turn is this far through. Buffering a swipe
@@ -169,7 +177,7 @@ export class Runtime {
   private syncChrome(depth = this.state.depth): void {
     const era = eraAt(depth);
     this.chromeEra = era.id;
-    applyThemeVars(this.themeName, era.palette);
+    applyThemeVars(this.themeName, era.palette, era.id);
     // The synth speaks the era too — a nib on paper is the wrong fiction the
     // moment the page becomes a typed one.
     sfx.hand = era.hand;
@@ -362,6 +370,50 @@ export class Runtime {
     this.pushHud();
   }
 
+  /**
+   * Edit the body. Cheat seam for `?dev=1` — see ui/Dev.tsx.
+   *
+   * Takes a mutator over a COPY rather than a patch object, because half the
+   * things worth cheating are relative ("one more heart", "one less") and a
+   * patch would have to be computed at the call site from state it does not
+   * have. Nothing here bypasses the engine: the state that comes out is a state
+   * `step()` would accept, and the preview is recomputed from it.
+   */
+  devPlayer(edit: (p: GameState['player']) => void): void {
+    const next = cloneState(this.state);
+    edit(next.player);
+    next.player.hp = Math.max(0, Math.min(next.player.hp, next.player.maxHp));
+    this.state = next;
+    this.pushHud();
+  }
+
+  /** Take a marginalia outright, without being offered it. */
+  devTrait(id: string): void {
+    const t = TRAIT_BY_ID.get(id);
+    if (!t) return;
+    const next = cloneState(this.state);
+    next.rules = applyTraitRules(next.rules, t);
+    t.player?.(next.player);
+    if (id !== 'mend') next.traits.push(id);
+    this.state = next;
+    this.pushHud();
+  }
+
+  /**
+   * Empty the floor, exactly as clearing it would.
+   *
+   * Through the same path the engine uses rather than by emptying the array:
+   * the stairs have to unseal, and a floor with nothing on it and a sealed way
+   * down is a soft-lock you could only have reached by cheating.
+   */
+  devClearFloor(): void {
+    const next = cloneState(this.state);
+    next.enemies = [];
+    next.stairsOpen = true;
+    this.state = next;
+    this.pushHud();
+  }
+
   /** End the run where it stands. */
   kill(): void {
     this.state = {
@@ -396,10 +448,12 @@ export class Runtime {
     this.clock += dt;
     this.effects.update(dt);
 
-    this.size = Math.min(
+    // Through `layout` rather than recomputed, so effects are aimed at the same
+    // board the renderer drew.
+    this.size = layout(
       this.renderer.canvas.clientWidth,
       this.renderer.canvas.clientHeight,
-    );
+    ).size;
 
     for (let i = 0; i < this.anim.cues.length; i++) {
       if (!this.anim.fired[i] && this.clock >= this.anim.cues[i].at) {
@@ -652,7 +706,10 @@ export class Runtime {
         if (eraAt(ev.depth).id !== this.chromeEra) this.syncChrome(ev.depth);
         sfx.descend(ev.depth);
         this.effects.clearStains();
-        fx.addFlash(0.16, t.paper);
+        // The flash was the whole ceremony of a descent, and a white frame is not
+        // a page being turned. It stays, at half, as the light off the leaf.
+        fx.addFlash(0.08, t.paper);
+        this.renderer.pageTurnAt = this.wall;
 
         break;
       }

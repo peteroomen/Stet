@@ -1,3 +1,4 @@
+import { eraAt, eraNumeral } from '../game/eras';
 import type { Hud as HudData } from '../game/runtime';
 
 /** HP as ink drops. Filled while you have them, hollow once they are spent. */
@@ -34,7 +35,23 @@ function Pips({ hp, maxHp, ward }: { hp: number; maxHp: number; ward: number }) 
 export function Hud({ hud, onShowTraits }: { hud: HudData; onShowTraits: () => void }) {
   return (
     <header className="hud">
+      {/*
+        The running head, which is what the top of a page is for.
+
+        A book names the work on every leaf and puts the folio at the outer
+        edge, and this page had neither — it had a bare "PAGE 3" floating over
+        half a screen of nothing. Naming the era here costs one line and does
+        the job the empty space was failing to do: it says where you are, on
+        every floor, rather than only on the one you arrived by.
+      */}
       <div className="hud__slot">
+        {/*
+          The name where there is room for it, and the numeral where there is
+          not — "III · Page 9" still says which of three places you are in, and
+          a running head ellipsised to "THE MAN…" says nothing at all.
+        */}
+        <span className="hud__eraNum">{eraNumeral(hud.depth)}</span>
+        <span className="hud__era">{eraAt(hud.depth).name}</span>
         <span className="hud__depth">
           Page<em>{hud.depth}</em>
         </span>
