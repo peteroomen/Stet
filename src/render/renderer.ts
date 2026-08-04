@@ -937,6 +937,54 @@ export class Renderer {
         ctx.restore();
         continue;
       }
+      /*
+       * A sweep. Drawn as a struck RULE through every tile it covers, plus a
+       * tick across each one, because the thing being promised is a line and not
+       * a destination — there is no arrowhead and no ghost, since nothing is
+       * going anywhere.
+       *
+       * Always the danger colour when it covers you and always drawn solid: a
+       * sweep is not dodged by stepping one tile, it is dodged by not being in
+       * the line, so "you could break this" is the wrong emphasis entirely.
+       */
+      if (intent.kind === 'sweep') {
+        if (intent.tiles.length === 0) continue;
+        const threat = intentThreatens(intent, s.player.pos);
+        const color = threat ? theme.blood : theme.ghost;
+        const alpha = settled * (threat ? 0.6 + pulse * 0.3 : 0.34);
+        const ends = intent.tiles.map((t) => centerOf(g, t));
+        const xs = ends.map((p) => p[0]);
+        const ys = ends.map((p) => p[1]);
+        const spine: Pt[] = [
+          [Math.min(...xs), Math.min(...ys)],
+          [Math.max(...xs), Math.max(...ys)],
+        ];
+        inkStroke(ctx, spine, {
+          color,
+          width: g.cell * (threat ? 0.05 : 0.034),
+          seed: e.seed + 313,
+          amp: g.cell * 0.008,
+          alpha,
+          boil,
+          passes: threat ? 2 : 1,
+        });
+        // A tick on every covered tile, so the line reads as "these squares"
+        // rather than as a wall drawn between them.
+        const across = g.cell * (threat ? 0.2 : 0.14);
+        for (const [tx, ty] of ends) {
+          inkStroke(ctx, [[tx - across, ty], [tx + across, ty]] as Pt[], {
+            color,
+            width: g.cell * 0.03,
+            seed: e.seed + 404 + tx,
+            amp: g.cell * 0.006,
+            alpha: alpha * 0.85,
+            boil,
+            passes: 1,
+          });
+        }
+        continue;
+      }
+
       if (intent.kind === 'hold' || intent.path.length === 0) continue;
 
       const threat = intentThreatens(intent, s.player.pos);

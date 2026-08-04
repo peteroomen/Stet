@@ -14,7 +14,7 @@ export type Dir = 'up' | 'down' | 'left' | 'right';
  */
 export type Action = Dir | 'wait';
 
-export type EnemyKind = 'rat' | 'stalker' | 'charger' | 'warden' | 'drollery';
+export type EnemyKind = 'rat' | 'stalker' | 'charger' | 'warden' | 'drollery' | 'typebar';
 export type ItemKind = 'vial' | 'nib' | 'gesso';
 
 /**
@@ -29,6 +29,20 @@ export type ItemKind = 'vial' | 'nib' | 'gesso';
 export type Intent =
   /** Walk this path, one tile at a time, stopping early if blocked. */
   | { kind: 'move'; path: Vec[] }
+  /**
+   * Strike every one of these tiles at once, without moving.
+   *
+   * Era I threatens TILES: one tile, or a two-tile lunge, and every dodge in the
+   * game is therefore a sidestep. A machine does not hit points, it hits LINES —
+   * so a sweep is a set of tiles struck simultaneously by something that stays
+   * where it is, and the counterplay is to be somewhere else entirely rather
+   * than one tile over. Nothing blocks it: it is a bar coming down on the page,
+   * not a body walking through it.
+   *
+   * `path` stays present and empty so every `intent.path` read in the renderer
+   * and the engine keeps working; `tiles` is the payload.
+   */
+  | { kind: 'sweep'; path: []; tiles: Vec[] }
   /** Winding up. Will not move this turn; acts next turn. */
   | { kind: 'wind'; path: [] }
   /** Nowhere legal to go. */

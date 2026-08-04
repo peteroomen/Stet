@@ -12,6 +12,7 @@
  * (comparing rule variants), so both are measuring the same players.
  */
 
+import { intentThreatens } from './enemies';
 import { chooseTrait, newGame, step } from './engine';
 import { ORTHO, add, eq, inBounds, key, manhattan } from './grid';
 import { Rng } from './rng';
@@ -117,9 +118,17 @@ export function evaluate(n: GameState, depthAtStart: number): number {
   score -= n.enemies.length * 26;
   score += n.player.dmg * 40;
 
+  /*
+   * Committed threat on your tile.
+   *
+   * Routed through `intentThreatens` rather than pattern-matching `move` here,
+   * so a new intent kind cannot be invisible to the search. It was open code
+   * that made the bots blind to the fade, and every number measured about that
+   * mechanic was a measurement of the bot not knowing the rule.
+   */
   for (const e of n.enemies) {
     if (manhattan(e.pos, n.player.pos) <= 1) score -= 8;
-    if (e.intent.kind === 'move' && e.intent.path.some((v) => eq(v, n.player.pos))) {
+    if (intentThreatens(e.intent, n.player.pos)) {
       score -= n.player.exposed ? 34 : 16;
     }
   }

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { ENEMY_STATS } from './enemies';
 import { newGame, step } from './engine';
 import { previewMoves, underThreat } from './preview';
 import type { Enemy, EnemyKind, GameState, Vec } from './types';
 
 function enemy(id: number, kind: EnemyKind, pos: Vec, over: Partial<Enemy> = {}): Enemy {
-  const hp = { rat: 1, stalker: 2, charger: 3, warden: 5, drollery: 8 }[kind];
+  const hp = ENEMY_STATS[kind].hp;
   return {
     id,
     kind,

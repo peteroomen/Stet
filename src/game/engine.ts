@@ -241,6 +241,37 @@ function shouldSpill(d: GameState): boolean {
 }
 
 /**
+ * One enemy landing one blow on you.
+ *
+ * Pulled out of the walk loop when the sweep arrived, so a bar coming down on
+ * your column and a rat walking into your tile price the hit through exactly the
+ * same code: exposure doubles it, GESSO soaks it before health, and health lost
+ * is counted apart from ward lost because RALLY gives back the one and must
+ * never give back the other.
+ */
+function strike(e: Enemy, d: GameState, from: Vec, at: Vec, ev: Ev[]): void {
+  const dmg = ENEMY_STATS[e.kind].dmg * (d.player.exposed ? d.rules.exposedMult : 1);
+  const soaked = Math.min(d.player.ward, dmg);
+  d.player.ward -= soaked;
+  const toHp = dmg - soaked;
+  d.player.hp -= toHp;
+  d.stats.damageTaken += dmg;
+  d.floorHpLost += toHp;
+  d.player.flow = false; // a charge you were hit through is not a dodge
+  ev.push({
+    t: 'eattack',
+    phase: 'e',
+    id: e.id,
+    kind: e.kind,
+    from: { ...from },
+    at: { ...at },
+    dmg,
+    exposed: d.player.exposed,
+    hpAfter: Math.max(0, d.player.hp),
+  });
+}
+
+/**
  * Execute one enemy's committed intent.
  *
  * The intent was planned last turn against where you stood then, and it is NOT
@@ -266,7 +297,8 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
       id: e.id,
       kind: e.kind,
       pos: { ...e.pos },
-      interrupted: intent.kind === 'move' && intent.path.length > 0,
+      interrupted:
+        intent.kind === 'sweep' || (intent.kind === 'move' && intent.path.length > 0),
     });
     return;
   }
@@ -293,6 +325,20 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
     }
     return;
   }
+  /*
+   * A sweep. Nothing moves and nothing blocks: the tiles were committed to last
+   * turn and every one of them is struck now, so being on any of them is the
+   * whole of it. Slow units reset here exactly as they do after a walk, which is
+   * what gives the TYPEBAR its every-other-turn beat.
+   */
+  if (intent.kind === 'sweep') {
+    if (intent.tiles.some((v) => eq(v, d.player.pos))) {
+      strike(e, d, e.pos, d.player.pos, ev);
+    }
+    if (st.slow) e.ready = false;
+    return;
+  }
+
   if (intent.kind === 'hold' || intent.path.length === 0) return;
 
   const from: Vec = { ...e.pos };
@@ -304,28 +350,7 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
 
     if (eq(next, d.player.pos)) {
       // Doubled while you are mid-swing. This is the whole cost of committing.
-      const dmg = st.dmg * (d.player.exposed ? d.rules.exposedMult : 1);
-      // GESSO takes it first. Health lost is counted separately from ward lost,
-      // because RALLY gives back health and must never give back a ground layer
-      // the whole point of which is that it cannot be replaced.
-      const soaked = Math.min(d.player.ward, dmg);
-      d.player.ward -= soaked;
-      const toHp = dmg - soaked;
-      d.player.hp -= toHp;
-      d.stats.damageTaken += dmg;
-      d.floorHpLost += toHp;
-      d.player.flow = false; // a charge you were hit through is not a dodge
-      ev.push({
-        t: 'eattack',
-        phase: 'e',
-        id: e.id,
-        kind: e.kind,
-        from: { ...cur },
-        at: { ...next },
-        dmg,
-        exposed: d.player.exposed,
-        hpAfter: Math.max(0, d.player.hp),
-      });
+      strike(e, d, cur, next, ev);
       break; // strikes from where it stands; never enters your tile
     }
 

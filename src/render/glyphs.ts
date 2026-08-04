@@ -115,6 +115,62 @@ export const ENEMY_GLYPHS: Record<EnemyKind, GlyphDef> = {
     dots: [[-0.58, 0.02, 0.09]],
     weight: 0.86,
   },
+  /*
+   * THE TYPEBAR — the arm, the slug, and the line it will strike.
+   *
+   * The only VERTICAL silhouette in the set, and deliberately so: everything
+   * else is broad or pointed sideways, and this is the one thing whose threat
+   * runs up and down the board. The shape is the mechanic — a heavy slug head
+   * with a long stem under it, hinged at a foot it never leaves.
+   *
+   * Under a brush the head and the stem merge into one blob at this size, so the
+   * brush version drops the slug's cross-bar and widens the head instead.
+   */
+  typebar: {
+    paths: [
+      // The slug: a heavy head, flat-topped where it meets the paper.
+      [
+        [-0.44, -0.9],
+        [0.44, -0.9],
+        [0.44, -0.52],
+        [-0.44, -0.52],
+        [-0.44, -0.9],
+      ],
+      // The face of the type, cut into the slug.
+      [
+        [-0.2, -0.78],
+        [0.2, -0.78],
+      ],
+      // The arm.
+      [
+        [0, -0.52],
+        [0, 0.6],
+      ],
+      // The pivot it swings from and never leaves.
+      [
+        [-0.34, 0.6],
+        [0.34, 0.6],
+      ],
+    ],
+    brushPaths: [
+      [
+        [-0.5, -0.86],
+        [0.5, -0.86],
+        [0.5, -0.5],
+        [-0.5, -0.5],
+        [-0.5, -0.86],
+      ],
+      [
+        [0, -0.5],
+        [0, 0.6],
+      ],
+      [
+        [-0.36, 0.6],
+        [0.36, 0.6],
+      ],
+    ],
+    weight: 1.05,
+  },
   stalker: {
     paths: [
       [

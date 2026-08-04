@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_COMBO, newGame, step } from './engine';
 import { ENEMY_STATS, makeEnemy, planIntent } from './enemies';
+import { underThreat } from './preview';
 import { Rng } from './rng';
 import type { Dir, GameState, Vec } from './types';
 
@@ -337,6 +338,107 @@ describe('enemies commit too', () => {
     }
   });
 });
+
+/**
+ * A sweep is the era II verb: a set of tiles struck at once by something that
+ * does not move. Everything era I threatens is a tile, so every dodge in the
+ * game so far is a sidestep — these are the tests that the new one is really a
+ * different question and not a reskin of the old one.
+ */
+describe('the typebar — a line, not a tile', () => {
+  /** A wound-up typebar at `pos`, telegraphing against the player's column. */
+  function armed(pos: Vec, over: Partial<GameState> = {}): GameState {
+    const e = makeEnemy(1, 'typebar', pos, 0);
+    e.ready = true;
+    return replan(board({ enemies: [e], ...over }));
+  }
+
+  it('aims at the column you are standing in, not the one it stands in', () => {
+    const s = armed(at(4, 4)); // player at 2,2 — a different column entirely
+    const intent = s.enemies[0].intent;
+    expect(intent.kind).toBe('sweep');
+    if (intent.kind !== 'sweep') throw new Error('unreachable');
+    expect(intent.tiles.map((t) => t.x)).toEqual([2, 2, 2, 2, 2]);
+    expect(intent.tiles.map((t) => t.y)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('is not dodged by moving along the column', () => {
+    const s = armed(at(4, 4));
+    const r = step(s, 'up'); // 2,2 → 2,1: still column two
+    expect(r.state.player.hp).toBe(5);
+  });
+
+  it('is dodged by one step sideways', () => {
+    const s = armed(at(4, 4));
+    const r = step(s, 'left'); // 2,2 → 1,2: out of the committed column
+    expect(r.state.player.hp).toBe(6);
+  });
+
+  it('never takes a step, whatever it is doing', () => {
+    let s = armed(at(4, 4));
+    for (let i = 0; i < 12; i++) {
+      s = step(s, (['left', 'right'] as Dir[])[i % 2]).state;
+      expect(s.enemies[0]?.pos).toEqual(at(4, 4));
+    }
+  });
+
+  it('beats on every other turn, because it is slow like anything else', () => {
+    let s = armed(at(4, 4));
+    const kinds: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      s = step(s, (['left', 'right'] as Dir[])[i % 2]).state;
+      kinds.push(s.enemies[0].intent.kind);
+    }
+    expect(kinds).toEqual(['wind', 'sweep', 'wind', 'sweep']);
+  });
+
+  /*
+   * Poise 1 on purpose: a stationary hazard you cannot interrupt is terrain, and
+   * one any stroke silences is a decision — quiet the machine, or deal with the
+   * thing walking at you.
+   */
+  it('a stroke breaks the sweep before it lands', () => {
+    const s = armed(at(3, 2)); // adjacent, so it can be answered
+    const r = step(s, 'right');
+    expect(r.state.player.hp).toBe(6);
+    expect(r.events.some((e) => e.t === 'stagger' && e.interrupted)).toBe(true);
+  });
+
+  /*
+   * Exposure has to be EARNED on the turn the sweep lands — setting the flag on
+   * the fixture and then moving clears it in the player phase, which is the
+   * engine being right and the first version of this test being wrong. So the
+   * player spends the turn striking something, which is also what keeps them
+   * standing in the committed column.
+   */
+  it('doubles against you mid-swing, exactly like a blow that walked in', () => {
+    const bar = makeEnemy(1, 'typebar', at(4, 4), 0);
+    bar.ready = true;
+    const s = replan(board({ enemies: [bar, makeEnemy(2, 'rat', at(3, 2), 0)] }));
+
+    const r = step(s, 'right'); // kills the rat, stays on 2,2, ends the turn exposed
+    expect(r.state.stats.kills).toBe(1);
+    // dmg 1, doubled. Sweeps price the hit through the same code a bump does,
+    // so there is no second set of damage rules to keep in step.
+    expect(r.state.player.hp).toBe(4);
+  });
+
+  it('reaches you through a blot — a bar comes down on the page, it does not walk', () => {
+    const s = armed(at(4, 4), { blots: [at(2, 1)] });
+    const r = step(s, 'down'); // 2,2 → 2,3, with a blot between it and nothing
+    expect(r.state.player.hp).toBe(5);
+  });
+
+  it('is legible: a committed sweep reads as a threat', () => {
+    const s = armed(at(4, 4));
+    expect(underThreat(s)).toBe(true);
+    // And is not a threat once you are out of the line it committed to.
+    const off = { ...s, player: { ...s.player, pos: at(0, 0) } };
+    expect(underThreat(off)).toBe(false);
+  });
+});
+
+
 
 describe('floor flow', () => {
   it('stairs stay sealed until the floor is clear, then unseal', () => {

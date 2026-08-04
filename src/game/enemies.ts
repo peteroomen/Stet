@@ -1,4 +1,4 @@
-import { DIAG, MAX_ENEMIES, ORTHO, add, chebyshev, eq, inBounds, manhattan } from './grid';
+import { DIAG, MAX_ENEMIES, ORTHO, SIZE, add, chebyshev, eq, inBounds, manhattan } from './grid';
 import type { Rng } from './rng';
 import type { Enemy, EnemyKind, GameState, Intent, Vec } from './types';
 
@@ -66,6 +66,47 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
     tell: 'Shrugs off a light stroke. Only a heavy blow stops it.',
   },
   /*
+   * THE TYPEBAR — the first thing on the page that does not chase you.
+   *
+   * It never takes a step. It reaches instead: every other turn it strikes the
+   * whole COLUMN you were standing in, committed a turn ahead like everything
+   * else here. Era I threatens tiles, so every dodge in the game so far is a
+   * sidestep; this threatens a line, and the only answer to a line is to be off
+   * it. Moving up or down inside the struck column does nothing at all, which is
+   * a genuinely new question on a board where any perpendicular step used to do.
+   *
+   * It is not a blot with a clock. A blot is permanent, total and immovable;
+   * this denies a column only on its beat, any stroke silences it for a turn
+   * (poise 1), and two kill it. What it changes is what standing still costs —
+   * and standing still is how a combo ladder gets built, so it taxes precisely
+   * the play the ceiling is made of.
+   *
+   * See `typebarPlan` for why it aims at your column rather than its own; the
+   * first version aimed at its own and the harness took it apart.
+   *
+   * ONE damage, not two, and the harness picked that. Against a baseline of
+   * 4 / 4 / 23 (mean 21.1 at the top, a 5.75x spread):
+   *
+   *   dmg 2   4 / 4 / 14   reacting mean 4.8   spread 3.5x
+   *   dmg 1   4 / 4 / 17   reacting mean 4.9   spread 4.25x
+   *
+   * At two it cost the ceiling 39% and flattened the spread hard, which is the
+   * shape the README warns about — skill mattering less. Its threat is
+   * POSITIONAL: it takes a fifth of the board away, and something that wide does
+   * not also need to hit hard. One damage keeps the gate and leaves the carriage
+   * and the era's boss room to take their own bite out of the top later.
+   */
+  typebar: {
+    hp: 2,
+    dmg: 1,
+    poiseBreak: 1,
+    slow: true,
+    cost: 3,
+    from: 5,
+    name: 'TYPEBAR',
+    tell: 'Never moves. Strikes the column you stand in, a turn later. Step sideways.',
+  },
+  /*
    * THE DROLLERY — the grotesque a scribe drew in the margin, and the first
    * boss.
    *
@@ -91,7 +132,14 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
   },
 };
 
-export const ENEMY_ORDER: EnemyKind[] = ['rat', 'stalker', 'charger', 'warden', 'drollery'];
+export const ENEMY_ORDER: EnemyKind[] = [
+  'rat',
+  'stalker',
+  'charger',
+  'warden',
+  'typebar',
+  'drollery',
+];
 
 /** Does this kind pull another body onto the board when it winds? */
 export const spawnsOnWind = (k: EnemyKind): boolean => k === 'drollery';
@@ -200,6 +248,39 @@ function chargerPlan(e: Enemy, s: GameState, _rng: Rng): Intent {
   return { kind: 'move', path };
 }
 
+/**
+ * TYPEBAR: strikes the whole of the column you were standing in, one turn later.
+ *
+ * It aims at YOUR column, not at its own, and that is the whole design. The
+ * first version struck the column it stood in, and the harness was blunt about
+ * it: 0.0–0.4 damage a floor and about twenty-five extra turns on it. Nothing
+ * ever forces you into a fixed column on a board with four others, so everyone
+ * simply left, nobody was ever hit, and the only thing it changed was how long
+ * a floor took — difficulty by attrition, which is what the spill already does
+ * better.
+ *
+ * Aiming at you makes it a read instead. The column is committed a full turn
+ * ahead like everything else here, and the counterplay is one step SIDEWAYS —
+ * moving up or down inside the column does nothing, which is a genuinely
+ * different question from every dodge in era I, where any perpendicular step
+ * works. And it is what the machine actually does: the bar strikes wherever the
+ * paper has been carried to.
+ *
+ * Its own tile is excluded — the bar is what strikes, not what is struck — and
+ * blots are not: a bar comes down on the page rather than walking across it, so
+ * there is no cover from it, no occlusion to work out, and the read stays
+ * exactly "this column is lethal".
+ */
+function typebarPlan(e: Enemy, s: GameState): Intent {
+  const tiles: Vec[] = [];
+  const x = s.player.pos.x;
+  for (let y = 0; y < SIZE; y++) {
+    if (x === e.pos.x && y === e.pos.y) continue;
+    tiles.push({ x, y });
+  }
+  return { kind: 'sweep', path: [], tiles };
+}
+
 /** Compute (and thereby telegraph) what this enemy will do on the coming turn. */
 export function planIntent(e: Enemy, s: GameState, rng: Rng): Intent {
   const st = ENEMY_STATS[e.kind];
@@ -234,12 +315,23 @@ export function planIntent(e: Enemy, s: GameState, rng: Rng): Intent {
       return stalkerPlan(e, s, rng);
     case 'charger':
       return chargerPlan(e, s, rng);
+    case 'typebar':
+      return typebarPlan(e, s);
   }
 }
 
-/** Does this intent, as planned, land on the player? Drives the red telegraph. */
+/**
+ * Does this intent, as planned, land on the player? Drives the red telegraph.
+ *
+ * Everything downstream of readability runs through this one function — the
+ * telegraph colour, `preview.underThreat`, and FLOW's "you stepped out of
+ * something committed" — so a new intent kind is only really in the game once it
+ * is answered here.
+ */
 export function intentThreatens(intent: Intent, playerPos: Vec): boolean {
-  return intent.kind === 'move' && intent.path.some((v) => eq(v, playerPos));
+  if (intent.kind === 'move') return intent.path.some((v) => eq(v, playerPos));
+  if (intent.kind === 'sweep') return intent.tiles.some((v) => eq(v, playerPos));
+  return false;
 }
 
 export function makeEnemy(id: number, kind: EnemyKind, pos: Vec, seed: number): Enemy {

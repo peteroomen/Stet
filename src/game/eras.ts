@@ -44,13 +44,32 @@ export const ERAS: Era[] = [
     boss: 'drollery',
   },
   /*
-   * II · The Typewriter and III · The Terminal are designed but unbuilt: each
-   * needs a mark-making system of its own, which is the bulk of that work and
-   * wants a render grid rather than a live board (see scripts/brush-shots.mjs).
+   * II · THE TYPEWRITER, depths 5–8.
    *
-   * Until they exist the descent repeats the manuscript, which is honest — the
-   * threat budget and the marginalia still escalate, so a deep run is harder
-   * without pretending to be somewhere new.
+   * Mechanically real, visually not yet: it is still drawn in the manuscript's
+   * hand, because the typed mark — hard edges, uniform weight, misregistration,
+   * ribbon fade — is a mark-making system of its own and wants a render grid
+   * rather than a live board (see scripts/brush-shots.mjs). Shipping the rules
+   * first is deliberate: what makes this a different PLACE is that its threats
+   * ask a different question, and that can be measured now, while the hand can
+   * only be judged by eye later.
+   *
+   * The RAT is gone. Chaff belongs to the manuscript, and each era is supposed
+   * to strip something away — though the spill still draws rats, which is the
+   * one seam left to close (`Era.chaff`).
+   */
+  {
+    id: 'typewriter',
+    name: 'The Typewriter',
+    roster: ['stalker', 'charger', 'warden', 'typebar'],
+    boss: 'drollery',
+  },
+  /*
+   * III · The Terminal is designed and unbuilt.
+   *
+   * Past era II the descent repeats the typewriter, which is honest — the threat
+   * budget and the marginalia still escalate, so a deep run is harder without
+   * pretending to be somewhere new.
    */
 ];
 
