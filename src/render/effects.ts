@@ -9,6 +9,7 @@ import {
   swashPath,
   type Pt,
 } from './ink';
+import type { Mark } from './glyphs';
 
 /**
  * Splatter, floating numbers, screenshake and hitstop.
@@ -76,6 +77,18 @@ export interface Ring {
 }
 
 export class Effects {
+  /**
+   * The era's instrument, pushed in by the renderer each frame.
+   *
+   * The effects layer was the last thing on the page still speaking era I in
+   * era II — reported from play as "the damage/exit reveal effects are still the
+   * same in type biome as in brush biome", and correctly. A struck page does not
+   * throw round droplets of ink and it does not unseal with a calligraphic
+   * flourish, so the three marks that carry a house style — the splatter, the
+   * swash and the floating numerals — each branch on this.
+   */
+  hand: Mark = 'brush';
+
   drops: Drop[] = [];
   texts: FloatText[] = [];
   rings: Ring[] = [];
@@ -305,8 +318,29 @@ export class Effects {
       ctx.save();
       ctx.globalAlpha = a;
       ctx.fillStyle = d.color;
-      blobPath(ctx, d.x, d.y, d.r * (1 - t * 0.25), d.seed, 0.5, 9);
-      ctx.fill();
+      const r = d.r * (1 - t * 0.25);
+      if (this.hand === 'type') {
+        /*
+         * A struck fleck — but a SOFT one.
+         *
+         * The first version was a hard axis-aligned square at full opacity, and
+         * it was reported straight back as harsh and not beautiful next to the
+         * brush world. It was: a solid rectangle has no ink in it. What a slug
+         * actually leaves on paper is a small mark that BLED, so these are wide
+         * and shallow like a struck character, rounded a hair at the corners,
+         * and carried at well under full weight so they read as ink pressed into
+         * a fibre rather than as pixels.
+         */
+        ctx.globalAlpha = a * 0.85;
+        const w = r * 2.4;
+        const h = r * 1.25;
+        ctx.beginPath();
+        ctx.roundRect(d.x - w / 2, d.y - h / 2, w, h, h * 0.42);
+        ctx.fill();
+      } else {
+        blobPath(ctx, d.x, d.y, r, d.seed, 0.5, 9);
+        ctx.fill();
+      }
       ctx.restore();
     }
   }
@@ -342,6 +376,52 @@ export class Effects {
       // Paint on fast, then hold and dry out.
       const progress = t < f.drawFor ? easeOutQuint(t / f.drawFor) : 1;
       const held = t < f.drawFor ? 0 : (t - f.drawFor) / (1 - f.drawFor);
+      const alpha = Math.min(1, 1.7 * (1 - held));
+
+      if (this.hand === 'type') {
+        /*
+         * A LINE OF TYPE, not a struck curve.
+         *
+         * Running the swash through `strikeStroke` gave a hard continuous ribbon
+         * following a calligrapher's arc, which is the worst of both worlds — the
+         * gesture of a brush with none of its grace, and it read as harsh. A
+         * machine does not make gestures; it makes CHARACTERS, one after another.
+         *
+         * So the same path is set as a row of small even marks along it,
+         * appearing in order like something being typed. It keeps the shape the
+         * animation needs, it is unmistakably of this era, and being made of
+         * many small light marks rather than one heavy one is what makes it sit
+         * on the page instead of shouting off it.
+         */
+        const marks = 16;
+        const shown = Math.max(1, Math.round(marks * progress));
+        ctx.save();
+        ctx.fillStyle = f.color;
+        for (let i = 0; i < shown; i++) {
+          const at = (i / (marks - 1)) * (f.pts.length - 1);
+          const p0 = f.pts[Math.floor(at)];
+          const p1 = f.pts[Math.min(f.pts.length - 1, Math.floor(at) + 1)];
+          const frac = at - Math.floor(at);
+          const x = p0[0] + (p1[0] - p0[0]) * frac;
+          const y = p0[1] + (p1[1] - p0[1]) * frac;
+          const ang = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+          // The ribbon is uneven from character to character, which is most of
+          // what stops a row of identical marks reading as a dotted line.
+          ctx.globalAlpha = alpha * (0.68 + hash3(f.seed + 17, i, 0) * 0.32);
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(ang + (hash3(f.seed + 29, i, 0) - 0.5) * 0.22);
+          const w = f.width * 1.05;
+          const h = f.width * 0.62;
+          ctx.beginPath();
+          ctx.roundRect(-w / 2, -h / 2, w, h, h * 0.4);
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.restore();
+        continue;
+      }
+
       brushStroke(ctx, f.pts, {
         color: f.color,
         width: f.width,
@@ -349,7 +429,7 @@ export class Effects {
         amp: f.width * 0.16,
         // Hold at full for the first stretch, then drop away. A mark that begins
         // fading the instant it lands is never actually seen.
-        alpha: Math.min(1, 1.7 * (1 - held)),
+        alpha,
         progress,
         // Runs drier as it fades, so the tail breaks up rather than dimming.
         dryness: 0.35 + held * 0.9,
@@ -370,9 +450,16 @@ export class Effects {
       ctx.save();
       ctx.globalAlpha = p > 0.6 ? 1 - (p - 0.6) / 0.4 : 1;
       ctx.fillStyle = t.color;
-      ctx.font = `${t.weight > 1 ? '700 ' : '600 '}${Math.round(t.size * pop)}px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`;
+      // Set in the era's own letterform. A blood numeral in a Renaissance serif
+      // floating over a typed page is the same mistake as a gilt vine on one.
+      ctx.font =
+        this.hand === 'type'
+          ? `700 ${Math.round(t.size * pop * 0.92)}px ui-monospace, "SF Mono", Menlo, Consolas, monospace`
+          : `${t.weight > 1 ? '700 ' : '600 '}${Math.round(t.size * pop)}px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      // The typed letterform is enough on its own; the extra tilt that was here
+      // made a number that is already moving and fading read as broken.
       ctx.fillText(t.text, t.x, t.y);
       ctx.restore();
     }

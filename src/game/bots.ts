@@ -12,11 +12,12 @@
  * (comparing rule variants), so both are measuring the same players.
  */
 
-import { newGame, step } from './engine';
-import { ORTHO, add, eq, inBounds, manhattan } from './grid';
+import { intentThreatens } from './enemies';
+import { chooseTrait, newGame, step } from './engine';
+import { ORTHO, add, eq, inBounds, key, manhattan } from './grid';
 import { Rng } from './rng';
 import { SHIPPED, type Rules } from './rules';
-import type { Dir, GameState, Vec } from './types';
+import type { Action, Dir, GameState, Vec } from './types';
 
 export const DIRS: Dir[] = ['up', 'right', 'down', 'left'];
 
@@ -27,7 +28,17 @@ const DIR_OF: Record<string, Dir> = {
   '1,0': 'right',
 };
 
-export type Brain = (s: GameState, rng: Rng) => Dir | null;
+export type Brain = (s: GameState, rng: Rng) => Action | null;
+
+/**
+ * The actions available on this board.
+ *
+ * WAIT is only offered when the rules allow it, so every variant that leaves it
+ * off searches exactly the space it used to and its numbers stay comparable.
+ */
+export function actionsFor(s: GameState): Action[] {
+  return s.rules.allowWait ? [...DIRS, 'wait'] : DIRS;
+}
 
 /**
  * A deliberately mediocre player: walks toward the nearest enemy, hits it, takes
@@ -55,6 +66,43 @@ export function botMove(s: GameState, rng: Rng): Dir | null {
   return DIR_OF[`${chosen.d.x},${chosen.d.y}`];
 }
 
+/**
+ * Steps to `goal` around the blots, or `Infinity` if it cannot be reached.
+ *
+ * Manhattan distance is a lie on a board with obstacles, and it cost real
+ * fidelity: with the stairs tucked behind two blots, a search bot walked into
+ * the manhattan-attractive dead end beside them and oscillated there forever.
+ * Measured, one run in thirty burned its entire turn budget on a CLEARED floor
+ * with the stairs open, which the harness then reported as "this run never
+ * ends" — a claim about the game that was really a claim about the bot.
+ *
+ * A human never had this problem: they can see the wall. Only used when the
+ * floor is clear and the way down is open, so the cost is a 25-tile flood on a
+ * small minority of evaluations.
+ */
+function walkDist(from: Vec, goal: Vec, blots: Vec[]): number {
+  if (eq(from, goal)) return 0;
+  const blocked = new Set(blots.map(key));
+  const seen = new Set<number>([key(from)]);
+  let edge: Vec[] = [from];
+  for (let d = 1; d <= 25 && edge.length > 0; d++) {
+    const next: Vec[] = [];
+    for (const cur of edge) {
+      for (const step of ORTHO) {
+        const n = add(cur, step);
+        if (!inBounds(n)) continue;
+        const k = key(n);
+        if (blocked.has(k) || seen.has(k)) continue;
+        if (eq(n, goal)) return d;
+        seen.add(k);
+        next.push(n);
+      }
+    }
+    edge = next;
+  }
+  return Infinity;
+}
+
 /** Static evaluation of a position, from the player's side. */
 export function evaluate(n: GameState, depthAtStart: number): number {
   let score = 0;
@@ -70,9 +118,17 @@ export function evaluate(n: GameState, depthAtStart: number): number {
   score -= n.enemies.length * 26;
   score += n.player.dmg * 40;
 
+  /*
+   * Committed threat on your tile.
+   *
+   * Routed through `intentThreatens` rather than pattern-matching `move` here,
+   * so a new intent kind cannot be invisible to the search. It was open code
+   * that made the bots blind to the fade, and every number measured about that
+   * mechanic was a measurement of the bot not knowing the rule.
+   */
   for (const e of n.enemies) {
     if (manhattan(e.pos, n.player.pos) <= 1) score -= 8;
-    if (e.intent.kind === 'move' && e.intent.path.some((v) => eq(v, n.player.pos))) {
+    if (intentThreatens(e.intent, n.player.pos)) {
       score -= n.player.exposed ? 34 : 16;
     }
   }
@@ -81,9 +137,27 @@ export function evaluate(n: GameState, depthAtStart: number): number {
   // single point of health — enough to prefer taking it, not enough to hoard.
   if (n.player.flow) score += 22;
 
+  /*
+   * Ink, when the fade or WEAR is on.
+   *
+   * Without this the bots are blind to the mechanic: they play exactly as they
+   * would without it and get punished for routing they never had a reason to
+   * change. That is not a measurement of the rule, it is a measurement of the
+   * bot not knowing the rule — and it made a reactive player look 32% worse
+   * under WEAR than they should.
+   *
+   * Weighted so a full charge is worth roughly a full bar of health, because
+   * both of them end the run at zero.
+   */
+  if (n.rules.fadeMax > 0) {
+    score += (n.player.ink / n.rules.fadeMax) * n.player.maxHp * 34;
+  }
+
   score += (n.depth - depthAtStart) * 500;
   if (n.stairsOpen && n.enemies.length === 0) {
-    score -= manhattan(n.player.pos, n.stairs) * 12;
+    // Around the blots, not through them.
+    const d = walkDist(n.player.pos, n.stairs, n.blots);
+    score -= (Number.isFinite(d) ? d : 40) * 12;
   }
   // Idling toward the spill is a real cost the search should feel.
   score -= Math.max(0, n.floorTurns - n.grace) * 8;
@@ -93,8 +167,8 @@ export function evaluate(n: GameState, depthAtStart: number): number {
 function search(s: GameState, ply: number, depthAtStart: number): number {
   if (ply === 0 || s.screen !== 'playing') return evaluate(s, depthAtStart);
   let best = -Infinity;
-  for (const dir of DIRS) {
-    const r = step(s, dir);
+  for (const act of actionsFor(s)) {
+    const r = step(s, act);
     if (!r.spent) continue;
     /*
      * A ply is one ENEMY PHASE, not one input.
@@ -122,16 +196,16 @@ function search(s: GameState, ply: number, depthAtStart: number): number {
 export function makeSearchBrain(ply: number): Brain {
   return (s, rng) => {
     let bestScore = -Infinity;
-    let best: Dir | null = null;
-    for (const dir of DIRS) {
-      const r = step(s, dir);
+    let best: Action | null = null;
+    for (const act of actionsFor(s)) {
+      const r = step(s, act);
       if (!r.spent) continue;
       // Same horizon rule as `search`: a granted free action is not a ply.
       const free = r.state.chain > s.chain;
       const score = search(r.state, free ? ply : ply - 1, s.depth) + rng.next() * 2;
       if (score > bestScore) {
         bestScore = score;
-        best = dir;
+        best = act;
       }
     }
     return best;
@@ -149,7 +223,10 @@ export function makeSearchBrain(ply: number): Brain {
 export function makeSloppyBrain(ply: number, misplay: number): Brain {
   const clean = makeSearchBrain(ply);
   return (s, rng) => {
-    if (rng.next() < misplay) return DIRS[rng.int(DIRS.length)];
+    if (rng.next() < misplay) {
+      const acts = actionsFor(s);
+      return acts[rng.int(acts.length)];
+    }
     return clean(s, rng);
   };
 }
@@ -178,11 +255,39 @@ export interface RunRecord {
   floors: FloorRecord[];
 }
 
+/**
+ * Which card a bot takes.
+ *
+ * Two honest models, and they bracket real play. `greedy` scores each card by
+ * playing it and evaluating the board — an optimiser building toward something.
+ * `blind` takes one at random, which is closer to a first-time player who does
+ * not yet know what any of them are worth. The gap between them is how much the
+ * marginalia reward knowing them.
+ */
+export type Chooser = (s: GameState, offer: string[], rng: Rng) => string;
+
+export const chooseGreedy: Chooser = (s, offer) => {
+  let best = offer[0];
+  let bestScore = -Infinity;
+  for (const id of offer) {
+    const r = chooseTrait(s, id);
+    const score = evaluate(r.state, r.state.depth);
+    if (score > bestScore) {
+      bestScore = score;
+      best = id;
+    }
+  }
+  return best;
+};
+
+export const chooseBlind: Chooser = (_s, offer, rng) => offer[rng.int(offer.length)];
+
 export function playRun(
   seed: number,
   maxTurns = 4000,
   brain: Brain = botMove,
   rules: Rules = SHIPPED,
+  chooser: Chooser = chooseGreedy,
 ): RunRecord {
   let s = newGame(seed, rules);
   const rng = new Rng(seed ^ 0x9e3779b9);
@@ -195,10 +300,18 @@ export function playRun(
   let floorTurns = 0;
   let floorDamage = 0;
 
-  while (s.screen === 'playing' && turns < maxTurns) {
-    const dir = brain(s, rng);
-    if (!dir) break;
-    const r = step(s, dir);
+  while ((s.screen === 'playing' || s.screen === 'choosing') && turns < maxTurns) {
+    // A descent can hold the run open on a card hand. Taking one is not a turn:
+    // nothing on the board moves, so it does not count against the turn budget.
+    if (s.screen === 'choosing') {
+      s = chooseTrait(s, chooser(s, s.offer, rng)).state;
+      if (s.screen === 'choosing') break; // nothing takeable — do not spin
+      continue;
+    }
+
+    const act = brain(s, rng);
+    if (!act) break;
+    const r = step(s, act);
     if (!r.spent) {
       stalled++;
       if (stalled > 40) break; // bot wedged against a wall, not a game bug

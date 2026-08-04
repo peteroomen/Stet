@@ -107,6 +107,14 @@ for (const [label, size] of [
     await page.waitForTimeout(600);
     await shot(page, `${label}-06-depth-9`);
 
+    // The boss. A duel: one drollery, no cover, nothing else on the page.
+    await scripted(page, () => {
+      const rt = window.__stet;
+      rt.jumpTo(4);
+    });
+    await page.waitForTimeout(700);
+    await shot(page, `${label}-08-boss`);
+
     // Death screen.
     await scripted(page, () => {
       const rt = window.__stet;

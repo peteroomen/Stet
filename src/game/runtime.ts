@@ -1,10 +1,13 @@
 import { sfx } from '../audio/sfx';
 import { Effects } from '../render/effects';
-import { EMPTY_ANIM, Renderer, buildAnim, type TurnAnim } from '../render/renderer';
+import { EMPTY_ANIM, Renderer, buildAnim, strikeWeight, type TurnAnim } from '../render/renderer';
 import { applyThemeVars, type ThemeName } from '../render/theme';
-import { demoState, newGame, step } from './engine';
+import { eraAt } from './eras';
+import { chooseTrait, demoState, newGame, step } from './engine';
+import { MAX_ENEMIES } from './grid';
+import { previewMoves, underThreat, type MoveOutcome } from './preview';
 import { randomSeed } from './rng';
-import type { Dir, Ev, GameState } from './types';
+import type { Action, Ev, GameState } from './types';
 
 /**
  * Accept the next input once the turn is this far through. Buffering a swipe
@@ -16,23 +19,62 @@ const EARLY = 0.84;
 const BEST_KEY = 'stet.best.v1';
 const THEME_KEY = 'stet.theme.v1';
 const MUTE_KEY = 'stet.mute.v1';
+const HOLD_KEY = 'stet.taughtHold.v1';
 
 export interface Hud {
   screen: GameState['screen'];
   depth: number;
   hp: number;
   maxHp: number;
+  /** GESSO layers. Take blows first and can never be mended. */
+  ward: number;
+  /**
+   * Retraces left before you wear through the page, or null when WEAR is off.
+   *
+   * Reported in RETRACES rather than raw ink, because that is the unit the
+   * player actually spends: fresh paper is free, and every revisit costs exactly
+   * one. A bar counting down in eights would be arithmetic; this is a count.
+   */
+  retraces: number | null;
   dmg: number;
   exposed: boolean;
+  /** Whether HOLD is offered at all. See Rules.allowWait.  */
+  canWait: boolean;
+  /** Holds left on this floor; Infinity when the rules do not ration them. */
+  waitsLeft: number;
+  /**
+   * Exposed AND something is committed to a blow that lands on you.
+   *
+   * Exposure doubles incoming damage, so it is frightening — but only when
+   * something can actually reach you. Standing exposed on an empty board costs
+   * nothing at all, and a readout that shouts equally loudly in both cases is
+   * how a mechanic ends up feeling arbitrary instead of learnable.
+   */
+  inDanger: boolean;
   combo: number;
   enemiesLeft: number;
   stairsOpen: boolean;
   kills: number;
   turns: number;
   best: number;
+  /** Ended by wearing through the page rather than by a blow. */
+  faded: boolean;
   /** Turns of quiet left before the page starts filling; 0 once it has begun. */
   graceLeft: number;
   spilling: boolean;
+  /**
+   * The page is full and the ink has nowhere left to go but onto you.
+   *
+   * Worth its own line rather than folding into `spilling`, because the two say
+   * opposite things about what to do: "the page is filling" is a reason to hurry,
+   * and this is a reason to kill something RIGHT NOW. Without it the drown reads
+   * as damage from nowhere.
+   */
+  drowning: boolean;
+  /** Marginalia taken this run, in order. Drives the ledger and the HUD count. */
+  traits: string[];
+  /** The three on the page right now, while `screen` is 'choosing'. */
+  offer: string[];
 }
 
 function hudOf(s: GameState, best: number): Hud {
@@ -41,16 +83,29 @@ function hudOf(s: GameState, best: number): Hud {
     depth: s.depth,
     hp: s.player.hp,
     maxHp: s.player.maxHp,
+    ward: s.player.ward,
+    retraces:
+      s.rules.fadeMax > 0 && s.rules.wearMemory > 0
+        ? Math.max(0, Math.ceil(s.player.ink / Math.max(1, s.rules.wearCost)))
+        : null,
     dmg: s.player.dmg,
     exposed: s.player.exposed,
+    canWait: s.rules.allowWait,
+    waitsLeft:
+      s.rules.waitsPerFloor > 0 ? Math.max(0, s.rules.waitsPerFloor - s.floorWaits) : Infinity,
+    inDanger: s.player.exposed && underThreat(s),
     combo: s.player.combo,
     enemiesLeft: s.enemies.length,
     stairsOpen: s.stairsOpen,
     kills: s.stats.kills,
     turns: s.stats.turns,
     best,
+    faded: s.screen === 'dead' && s.player.hp > 0,
     graceLeft: Math.max(0, s.grace - s.floorTurns),
     spilling: s.floorTurns >= s.grace && s.enemies.length > 0,
+    drowning: s.floorTurns >= s.grace && s.enemies.length >= MAX_ENEMIES,
+    traits: [...s.traits],
+    offer: [...s.offer],
   };
 }
 
@@ -60,16 +115,35 @@ export class Runtime {
   renderer: Renderer;
   effects = new Effects();
 
+  /**
+   * What each of the four directions would cost, recomputed once per turn.
+   *
+   * Deliberately NOT per frame: `previewMoves` runs `step()` four times and
+   * `step()` deep-clones, which is nothing once a turn and real work at 60fps
+   * against a board that has not changed.
+   */
+  moves: MoveOutcome[] = [];
+
   private clock = 0;
   private wall = 0;
   private last = 0;
   private raf = 0;
-  private queued: Dir | null = null;
+  private queued: Action | null = null;
   private size = 0;
   private running = false;
 
   best = 0;
   themeName: ThemeName = 'day';
+  /** Era the chrome is currently wearing, so a descent only re-pushes on a change. */
+  private chromeEra = '';
+
+  /**
+   * Whether this player has ever held their ground.
+   *
+   * Tapping to hold is the one input nothing on screen implies, so the hint
+   * stays up until it has been used once — and then never again, on this device.
+   */
+  private _taughtHold = false;
   onHud: (h: Hud) => void = () => {};
 
   constructor(canvas: HTMLCanvasElement) {
@@ -77,14 +151,42 @@ export class Runtime {
     this.themeName = (localStorage.getItem(THEME_KEY) as ThemeName) ?? 'day';
     const muted = localStorage.getItem(MUTE_KEY) === '1';
     sfx.setMuted(muted);
+    this._taughtHold = localStorage.getItem(HOLD_KEY) === '1';
 
     this.state = demoState(randomSeed());
     this.renderer = new Renderer(canvas, this.effects, this.themeName);
-    applyThemeVars(this.themeName);
+    this.syncChrome();
+  }
+
+  /**
+   * Push the current lighting AND era into the CSS custom properties.
+   *
+   * The React chrome — HUD, cards, the state line — is styled entirely off these
+   * vars, so it has to be re-pushed whenever either changes. Missing the era half
+   * leaves the frame around the board in the manuscript's gold while the board
+   * itself has gone to steel, which reads as a bug rather than as a place.
+   */
+  private syncChrome(depth = this.state.depth): void {
+    const era = eraAt(depth);
+    this.chromeEra = era.id;
+    applyThemeVars(this.themeName, era.palette);
+    // The synth speaks the era too — a nib on paper is the wrong fiction the
+    // moment the page becomes a typed one.
+    sfx.hand = era.hand;
+    sfx.setDroneHand();
   }
 
   get muted(): boolean {
     return sfx.muted;
+  }
+
+  get taughtHold(): boolean {
+    return this._taughtHold;
+  }
+
+  set taughtHold(v: boolean) {
+    this._taughtHold = v;
+    localStorage.setItem(HOLD_KEY, v ? '1' : '0');
   }
 
   start(): void {
@@ -108,7 +210,7 @@ export class Runtime {
     this.renderer.themeName = name;
     this.renderer.invalidatePaper();
     this.renderer.invalidateGlyphs();
-    applyThemeVars(name);
+    this.syncChrome();
     localStorage.setItem(THEME_KEY, name);
     sfx.ui();
   }
@@ -133,6 +235,9 @@ export class Runtime {
     this.queued = null;
     this.effects.reset();
     this.renderer.invalidatePaper();
+    // Back to page one, so back to the first era's page AND its palette of
+    // sounds — a new run started inside era II's synth would open wrong.
+    this.syncChrome();
     sfx.startDrone(this.state.depth);
     sfx.setDroneDepth(this.state.depth);
     sfx.descend(this.state.depth);
@@ -150,19 +255,32 @@ export class Runtime {
     this.pushHud();
   }
 
-  /** Feed a direction. Buffers if a turn is still resolving. */
-  input(dir: Dir): void {
-    if (this.state.screen !== 'playing') return;
-    if (this.clock < this.anim.total * EARLY) {
-      this.queued = dir;
-      return;
-    }
-    this.resolve(dir);
+  /** Take one of the marginalia on offer. Not a turn — nothing on the board moves. */
+  takeTrait(id: string): void {
+    const r = chooseTrait(this.state, id);
+    if (r.state === this.state) return;
+    this.state = r.state;
+    this.anim = EMPTY_ANIM;
+    this.clock = 0;
+    this.queued = null;
+    for (const ev of r.events) this.fire(ev);
+    this.pushHud();
   }
 
-  private resolve(dir: Dir): void {
+  /** Feed an action. Buffers if a turn is still resolving. */
+  input(act: Action): void {
+    if (this.state.screen !== 'playing') return;
+    if (act === 'wait' && !this.state.rules.allowWait) return;
+    if (this.clock < this.anim.total * EARLY) {
+      this.queued = act;
+      return;
+    }
+    this.resolve(act);
+  }
+
+  private resolve(act: Action): void {
     const before = this.state.depth;
-    const r = step(this.state, dir);
+    const r = step(this.state, act);
     this.state = r.state;
     this.anim = buildAnim(r.events);
     this.clock = 0;
@@ -182,7 +300,17 @@ export class Runtime {
     this.pushHud();
   }
 
+  /**
+   * Recompute what each direction would cost. Every path that changes the board
+   * lands in `pushHud`, so this hangs off it rather than being remembered at six
+   * separate call sites.
+   */
+  refreshPreview(): void {
+    this.moves = this.state.screen === 'playing' ? previewMoves(this.state) : [];
+  }
+
   private pushHud(): void {
+    this.refreshPreview();
     this.onHud(hudOf(this.state, this.best));
   }
 
@@ -215,6 +343,10 @@ export class Runtime {
       const r = step(s, above ? 'down' : 'up');
       if (!r.events.some((e) => e.t === 'descend')) break;
       s = r.state;
+      // A descent holds the run open on a card hand, and nothing resolves until
+      // one is taken — so the jump stopped dead on the first offer and quietly
+      // landed two floors short of wherever it was aimed.
+      if (s.screen === 'choosing' && s.offer.length > 0) s = chooseTrait(s, s.offer[0]).state;
     }
     this.state = s;
     this.anim = EMPTY_ANIM;
@@ -222,6 +354,9 @@ export class Runtime {
     this.queued = null;
     this.effects.reset();
     this.renderer.invalidatePaper();
+    // Back to page one, so back to the first era's page AND its palette of
+    // sounds — a new run started inside era II's synth would open wrong.
+    this.syncChrome();
     sfx.startDrone(this.state.depth);
     sfx.setDroneDepth(this.state.depth);
     this.pushHud();
@@ -238,7 +373,7 @@ export class Runtime {
       this.best = this.state.stats.deepest;
       localStorage.setItem(BEST_KEY, String(this.best));
     }
-    this.anim = buildAnim([{ t: 'death', phase: 'e', depth: this.state.depth }]);
+    this.anim = buildAnim([{ t: 'death', phase: 'e', depth: this.state.depth, cause: 'blow' }]);
     this.clock = 0;
     this.pushHud();
   }
@@ -274,12 +409,12 @@ export class Runtime {
     }
 
     if (this.queued && this.clock >= this.anim.total * EARLY) {
-      const d = this.queued;
+      const d: Action = this.queued;
       this.queued = null;
       this.resolve(d);
     }
 
-    this.renderer.draw(this.state, this.anim, this.clock, this.wall);
+    this.renderer.draw(this.state, this.anim, this.clock, this.wall, this.moves);
   }
 
   /* ---------------------------------------------------------------------
@@ -299,6 +434,24 @@ export class Runtime {
         sfx.step();
         break;
 
+      case 'wait': {
+        sfx.wait();
+        break;
+      }
+
+      // The margin. Gilded rather than bloody: this is the one moment in a run
+      // that is not about being hit.
+      case 'offer': {
+        sfx.unseal();
+        break;
+      }
+
+      case 'trait': {
+        sfx.upgrade();
+        fx.addFlash(0.1, t.gold);
+        break;
+      }
+
       case 'blocked': {
         sfx.blocked();
         fx.addShake(cell * 0.03);
@@ -309,9 +462,15 @@ export class Runtime {
         const [x, y] = at(ev.to);
         const [px, py] = at(ev.from);
         const ang = Math.atan2(y - py, x - px);
-        sfx.strike(ev.combo, ev.killed);
-        fx.addShake(cell * (0.045 + ev.dmg * 0.016));
-        fx.addFreeze(ev.killed ? 72 : 40 + ev.combo * 6);
+        // Weight, not damage, so shake / freeze / duration / reach all move
+        // together and one blow reads as one event. The old numbers were flat —
+        // a glancing tap froze for 40 ms and a killing blow for 72, which is not
+        // enough spread for anything to feel explosive, because nothing was
+        // quiet. A tap is now over before you notice; a real blow stops the page.
+        const weight = strikeWeight(ev.dmg, ev.killed);
+        sfx.strike({ combo: ev.combo, killed: ev.killed, weight, broke: ev.broke });
+        fx.addShake(cell * (0.03 + weight * 0.1));
+        fx.addFreeze(30 + weight * 90);
         // The stroke itself, as a brush arc through the target. Ink when it bit
         // deep enough to break the stance, blood when it merely landed — so the
         // most important fact about a hit is legible from its colour alone.
@@ -418,6 +577,45 @@ export class Runtime {
         break;
       }
 
+      /*
+       * The page had no room left, so it filled over you.
+       *
+       * Drawn as the spill's own well — the ink closing IN on your tile rather
+       * than a splash thrown outward — so it reads as the same mechanic finding
+       * you rather than as an unexplained tick of damage. The ring collapses
+       * inward, which is the one motion nothing else on the board makes.
+       */
+      case 'drown': {
+        const [x, y] = at(ev.pos);
+        sfx.drown();
+        fx.addShake(cell * 0.05);
+        fx.addFreeze(55);
+        fx.ring(x, y, cell * 1.3, cell * 0.1, t.ink, cell * 0.05, 480);
+        fx.addFlash(0.14, t.ink);
+        // The numeral only. The state line already names it, and a caption
+        // across three tiles of board is the kind of thing this HUD keeps
+        // having to have removed from it.
+        fx.text(x, y - cell * 0.3, `-${ev.dmg}`, t.ink, cell * 0.3, 1.4);
+        break;
+      }
+
+      /*
+       * The bell, and the whole reason it is an event: it has to TEACH. The
+       * player must connect "I heard that" with "one fewer row is safe from
+       * now on", or the fight reads as arbitrarily escalating rather than as
+       * advancing. So it says the number outright.
+       */
+      case 'bell': {
+        const [x, y] = at(ev.pos);
+        sfx.bell();
+        fx.addShake(cell * 0.07);
+        fx.addFreeze(120);
+        fx.addFlash(0.16, t.blood);
+        fx.ring(x, y, cell * 0.2, cell * 2.6, t.blood, cell * 0.05, 900);
+        fx.text(x, y - cell * 0.5, `${ev.width} ROWS`, t.blood, cell * 0.26, 1.6);
+        break;
+      }
+
       case 'unseal': {
         const [x, y] = at(ev.pos);
         sfx.unseal();
@@ -432,9 +630,13 @@ export class Runtime {
       }
 
       case 'descend': {
+        // Era first: `descend` retunes the drone, and it should be retuned as
+        // the thing the new era sounds like rather than the old one.
+        if (eraAt(ev.depth).id !== this.chromeEra) this.syncChrome(ev.depth);
         sfx.descend(ev.depth);
         this.effects.clearStains();
         fx.addFlash(0.16, t.paper);
+
         break;
       }
 

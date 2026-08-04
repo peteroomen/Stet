@@ -5,8 +5,26 @@ import type { Rules } from './rules';
 export type Vec = { x: number; y: number };
 export type Dir = 'up' | 'down' | 'left' | 'right';
 
-export type EnemyKind = 'rat' | 'stalker' | 'charger' | 'warden';
-export type ItemKind = 'vial' | 'nib';
+/**
+ * What you can spend a turn on.
+ *
+ * `wait` holds your ground: you do not move, you do not swing, and the enemy
+ * phase runs anyway. It is gated behind `Rules.allowWait` because standing still
+ * is exactly the strategy the spill exists to punish — see rules.ts.
+ */
+export type Action = Dir | 'wait';
+
+export type EnemyKind =
+  | 'rat'
+  | 'stalker'
+  | 'charger'
+  | 'warden'
+  | 'drollery'
+  | 'typebar'
+  | 'carriage'
+  | 'carriageReturn'
+  | 'semicolon';
+export type ItemKind = 'vial' | 'nib' | 'gesso';
 
 /**
  * What an enemy has committed to doing on the coming turn.
@@ -20,6 +38,20 @@ export type ItemKind = 'vial' | 'nib';
 export type Intent =
   /** Walk this path, one tile at a time, stopping early if blocked. */
   | { kind: 'move'; path: Vec[] }
+  /**
+   * Strike every one of these tiles at once, without moving.
+   *
+   * Era I threatens TILES: one tile, or a two-tile lunge, and every dodge in the
+   * game is therefore a sidestep. A machine does not hit points, it hits LINES —
+   * so a sweep is a set of tiles struck simultaneously by something that stays
+   * where it is, and the counterplay is to be somewhere else entirely rather
+   * than one tile over. Nothing blocks it: it is a bar coming down on the page,
+   * not a body walking through it.
+   *
+   * `path` stays present and empty so every `intent.path` read in the renderer
+   * and the engine keeps working; `tiles` is the payload.
+   */
+  | { kind: 'sweep'; path: []; tiles: Vec[] }
   /** Winding up. Will not move this turn; acts next turn. */
   | { kind: 'wind'; path: [] }
   /** Nowhere legal to go. */
@@ -83,10 +115,38 @@ export interface Player {
    * shipped game leaves it permanently false.
    */
   flow: boolean;
+  /**
+   * Ink left before you fade off the page. See Rules.fadeMax; unused while the
+   * fade is off, and reset on every descent.
+   */
+  ink: number;
+  /**
+   * GESSO — the ground laid over a page before anything is written on it.
+   *
+   * Takes blows before your health does, and **cannot be mended**: MEND, RALLY
+   * and a vial all restore health and never this. So it is a resource you spend
+   * once and only replace by finding more, which makes a spare layer worth
+   * routing across a floor for in a way another heart never is.
+   */
+  ward: number;
+  /**
+   * Tiles the page still remembers you standing on, most recent first.
+   *
+   * Only used when `Rules.wearMemory > 0`. Cleared by a stroke — committing to a
+   * fight is the opposite of the pacing this exists to charge for.
+   */
+  trail: Vec[];
   facing: Dir;
 }
 
-export type Screen = 'title' | 'playing' | 'dead';
+/**
+ * `choosing` is a descent held open while three marginalia are on the page.
+ *
+ * A separate screen rather than a modal over `playing`, because every input path
+ * — swipe, tap, key — has to stop meaning "take a turn" while the cards are up,
+ * and one flag read in one place is safer than remembering that at each of them.
+ */
+export type Screen = 'title' | 'playing' | 'choosing' | 'dead';
 
 export interface RunStats {
   kills: number;
@@ -125,6 +185,108 @@ export interface GameState {
   floorHpRallied: number;
   /** Turns since the last spill. Reset on descent and on each spill. */
   spillClock: number;
+  /** Holds spent on this floor. See Rules.waitsPerFloor. */
+  floorWaits: number;
+  /** Marginalia taken this run, in the order they were taken. */
+  traits: string[];
+  /** The three on offer while `screen` is 'choosing'. Empty otherwise. */
+  offer: string[];
+}
+
+/**
+ * A deep copy of a board, for `step()` to mutate freely.
+ *
+ * This is a hand-written `structuredClone`, and it is here because it is by far
+ * the hottest thing in the project. `step()` is pure, so every call copies the
+ * whole state — and the N-ply bots call `step()` exponentially, four times per
+ * ply. Measured by `npm run bench` on a page-3 board with four foes:
+ *
+ *   structuredClone   24.56 µs
+ *   cloneState         0.72 µs      34x faster
+ *   step() total       3.06 µs      was ~27
+ *
+ * An eight-fold faster turn, which took the test suite from 122s to 15s with a
+ * byte-identical curve. It is also what the previews pay four times over on
+ * every real input, so this is not only a test-suite concern.
+ *
+ * Written out longhand rather than generically on purpose. A `for…in` copy would
+ * be nearly as slow (the cost is the generic traversal, not the allocation), and
+ * a shallow spread would silently alias the arrays — which in a mutating engine
+ * is the worst possible bug: a bot's hypothetical move would edit the real board.
+ * `cloneState.test.ts` checks this against `structuredClone` for deep equality
+ * AND for non-aliasing across every field, so adding a field without adding it
+ * here fails a test rather than corrupting a run.
+ */
+export function cloneState(s: GameState): GameState {
+  const p = s.player;
+  return {
+    screen: s.screen,
+    depth: s.depth,
+    turn: s.turn,
+    floorTurns: s.floorTurns,
+    grace: s.grace,
+    player: {
+      pos: { x: p.pos.x, y: p.pos.y },
+      hp: p.hp,
+      maxHp: p.maxHp,
+      dmg: p.dmg,
+      exposed: p.exposed,
+      combo: p.combo,
+      flow: p.flow,
+      ink: p.ink,
+      ward: p.ward,
+      trail: p.trail.map((v) => ({ x: v.x, y: v.y })),
+      facing: p.facing,
+    },
+    enemies: s.enemies.map((e) => ({
+      id: e.id,
+      kind: e.kind,
+      pos: { x: e.pos.x, y: e.pos.y },
+      hp: e.hp,
+      maxHp: e.maxHp,
+      ready: e.ready,
+      struck: e.struck,
+      poise: e.poise,
+      intent: cloneIntent(e.intent),
+      seed: e.seed,
+    })),
+    items: s.items.map((i) => ({
+      id: i.id,
+      kind: i.kind,
+      pos: { x: i.pos.x, y: i.pos.y },
+      seed: i.seed,
+    })),
+    blots: s.blots.map((b) => ({ x: b.x, y: b.y })),
+    stairs: { x: s.stairs.x, y: s.stairs.y },
+    stairsOpen: s.stairsOpen,
+    rng: s.rng,
+    nextId: s.nextId,
+    stats: { ...s.stats },
+    // Rules are immutable by contract — a trait builds a NEW object rather than
+    // editing one (see `applyTraitRules`), so this reference is safe to share and
+    // copying it would be pure waste on the hottest path in the game.
+    rules: s.rules,
+    chain: s.chain,
+    floorHpLost: s.floorHpLost,
+    floorHpRallied: s.floorHpRallied,
+    spillClock: s.spillClock,
+    floorWaits: s.floorWaits,
+    traits: s.traits.slice(),
+    offer: s.offer.slice(),
+  };
+}
+
+function cloneIntent(i: Intent): Intent {
+  switch (i.kind) {
+    case 'move':
+      return { kind: 'move', path: i.path.map((v) => ({ x: v.x, y: v.y })) };
+    case 'sweep':
+      return { kind: 'sweep', path: [], tiles: i.tiles.map((v) => ({ x: v.x, y: v.y })) };
+    case 'wind':
+      return { kind: 'wind', path: [] };
+    case 'hold':
+      return { kind: 'hold', path: [] };
+  }
 }
 
 /** Which half of the turn an event belongs to — the renderer schedules from this. */
@@ -132,6 +294,7 @@ export type EvPhase = 'p' | 'e';
 
 export type Ev =
   | { t: 'blocked'; phase: EvPhase; pos: Vec; dir: Dir }
+  | { t: 'wait'; phase: EvPhase; pos: Vec }
   | { t: 'move'; phase: EvPhase; from: Vec; to: Vec; dir: Dir }
   | {
       t: 'bump';
@@ -146,6 +309,15 @@ export type Ev =
       id: number;
       /** Did this stroke break the stance? False = it landed but was shrugged off. */
       broke: boolean;
+      /**
+       * A foe the stroke caught rather than one you aimed at — the reach card
+       * carrying through, or the splash card catching what you were touching.
+       *
+       * The renderer must not take its player motion from one of these: the hero
+       * lunges at the tile you swiped toward, and a glance can be in any
+       * direction at all.
+       */
+      glance: boolean;
     }
   | { t: 'kill'; phase: EvPhase; pos: Vec; kind: EnemyKind }
   | { t: 'emove'; phase: EvPhase; id: number; kind: EnemyKind; from: Vec; to: Vec }
@@ -164,9 +336,37 @@ export type Ev =
   | { t: 'pickup'; phase: EvPhase; pos: Vec; kind: ItemKind; amount: number }
   | { t: 'stagger'; phase: EvPhase; id: number; kind: EnemyKind; pos: Vec; interrupted: boolean }
   | { t: 'spill'; phase: EvPhase; pos: Vec; kind: EnemyKind }
+  /**
+   * The carriage has run off the end of the page and come back.
+   *
+   * Its own event because it is the boss's one piece of teaching: the bell is
+   * what tells you the band just got wider, and a player who never learns that
+   * is a player who thinks the fight got unfair rather than that it advanced.
+   */
+  | { t: 'bell'; phase: EvPhase; pos: Vec; width: number }
+  /**
+   * The page filled with nowhere left to put it, so it filled over you.
+   *
+   * Not an `eattack`: nothing struck you, so it is never doubled by exposure and
+   * no enemy is credited with it. It is what a spill becomes once the board is
+   * at MAX_ENEMIES — see engine.ts.
+   */
+  | { t: 'drown'; phase: EvPhase; pos: Vec; dmg: number; hpAfter: number }
   | { t: 'unseal'; phase: EvPhase; pos: Vec }
   | { t: 'descend'; phase: EvPhase; depth: number }
-  | { t: 'death'; phase: EvPhase; depth: number };
+  | { t: 'offer'; phase: EvPhase; ids: string[] }
+  | { t: 'trait'; phase: EvPhase; id: string }
+  | {
+      t: 'death';
+      phase: EvPhase;
+      depth: number;
+      /**
+       * What ended it. `fade` means your own ink ran out; `drown` means the
+       * page's did not — it filled with no room left and came through you.
+       * Neither is a blow, and neither is credited to an enemy.
+       */
+      cause: 'blow' | 'fade' | 'drown';
+    };
 
 export interface StepResult {
   state: GameState;

@@ -1,5 +1,15 @@
-import { blobPath, brushStroke, inkStroke, type Pt } from './ink';
+import { blobPath, brushStroke, hash3, inkStroke, strikeStroke, type Pt } from './ink';
 import type { EnemyKind, ItemKind } from '../game/types';
+
+/**
+ * The hand a mark is made in. One per era — see game/eras.ts.
+ *
+ * The SILHOUETTES do not change between them. A RAT is a RAT whether brushed or
+ * struck, so everything a player learned in the first four floors keeps paying;
+ * only the instrument changes. That is the whole payoff of the era system, and
+ * it is why this is a mode on the renderer rather than a second set of glyphs.
+ */
+export type Mark = 'brush' | 'nib' | 'type';
 
 /**
  * Every actor is a set of polylines in unit space (roughly -1..1), inked at draw
@@ -51,6 +61,79 @@ export const HERO: GlyphDef = {
 };
 
 export const ENEMY_GLYPHS: Record<EnemyKind, GlyphDef> = {
+  /*
+   * THE DROLLERY — the grotesque in the margin.
+   *
+   * Bigger and heavier than anything else on the page, and deliberately the only
+   * ASYMMETRIC silhouette in the set: every other kind is mirror-balanced, so a
+   * lopsided shape reads as wrong before it reads as anything, which is what a
+   * boss should do at a glance. A hooked horn one side, a curled flourish the
+   * other, and a wide mouth.
+   */
+  drollery: {
+    paths: [
+      // The body: a broad, sagging bell.
+      [
+        [-0.82, 0.12],
+        [-0.62, -0.5],
+        [0, -0.72],
+        [0.62, -0.5],
+        [0.82, 0.12],
+        [0.44, 0.66],
+        [-0.44, 0.66],
+        [-0.82, 0.12],
+      ],
+      // A hooked horn, left only.
+      [
+        [-0.5, -0.6],
+        [-0.72, -0.98],
+        [-0.3, -0.9],
+      ],
+      // A scribe's curl for the other, because a drollery is drawn, not born.
+      [
+        [0.52, -0.58],
+        [0.86, -0.92],
+        [0.7, -0.36],
+      ],
+      // The mouth.
+      [
+        [-0.34, 0.28],
+        [-0.1, 0.44],
+        [0.14, 0.28],
+        [0.36, 0.44],
+      ],
+    ],
+    dots: [
+      [-0.3, -0.24, 0.11],
+      [0.3, -0.24, 0.11],
+    ],
+    weight: 1.3,
+  },
+  /*
+   * THE SEMICOLON — a stray mark, and the smallest silhouette in the set.
+   *
+   * Drawn as the character itself: a struck point above, a comma's tail below.
+   * Deliberately TINY next to everything else, because it is chaff and the
+   * board has to say so before you read anything — a player should never spend
+   * a turn working out whether the little mark is worth worrying about.
+   *
+   * It is also the only glyph in the game that is literally a letterform, which
+   * is the joke the era is built on: in a typewriter's world the vermin are the
+   * punctuation.
+   */
+  semicolon: {
+    paths: [
+      // The comma's tail, hooking left the way it does on a page.
+      [
+        [0.1, 0.12],
+        [0.16, 0.42],
+        [-0.14, 0.62],
+      ],
+    ],
+    // The point above it. Small and square: struck, not spattered.
+    dots: [[0.12, -0.3, 0.15]],
+    weight: 1.15,
+  },
   rat: {
     paths: [
       [
@@ -66,6 +149,182 @@ export const ENEMY_GLYPHS: Record<EnemyKind, GlyphDef> = {
     ],
     dots: [[-0.58, 0.02, 0.09]],
     weight: 0.86,
+  },
+  /*
+   * THE TYPEBAR — the arm, the slug, and the line it will strike.
+   *
+   * The only VERTICAL silhouette in the set, and deliberately so: everything
+   * else is broad or pointed sideways, and this is the one thing whose threat
+   * runs up and down the board. The shape is the mechanic — a heavy slug head
+   * with a long stem under it, hinged at a foot it never leaves.
+   *
+   * Under a brush the head and the stem merge into one blob at this size, so the
+   * brush version drops the slug's cross-bar and widens the head instead.
+   */
+  typebar: {
+    paths: [
+      // The slug: a heavy head, flat-topped where it meets the paper.
+      [
+        [-0.44, -0.9],
+        [0.44, -0.9],
+        [0.44, -0.52],
+        [-0.44, -0.52],
+        [-0.44, -0.9],
+      ],
+      // The face of the type, cut into the slug.
+      [
+        [-0.2, -0.78],
+        [0.2, -0.78],
+      ],
+      // The arm.
+      [
+        [0, -0.52],
+        [0, 0.6],
+      ],
+      // The pivot it swings from and never leaves.
+      [
+        [-0.34, 0.6],
+        [0.34, 0.6],
+      ],
+    ],
+    brushPaths: [
+      [
+        [-0.5, -0.86],
+        [0.5, -0.86],
+        [0.5, -0.5],
+        [-0.5, -0.5],
+        [-0.5, -0.86],
+      ],
+      [
+        [0, -0.5],
+        [0, 0.6],
+      ],
+      [
+        [-0.36, 0.6],
+        [0.36, 0.6],
+      ],
+    ],
+    weight: 1.05,
+  },
+  /*
+   * THE CARRIAGE — the platen and its rails.
+   *
+   * Deliberately the exact opposite of the TYPEBAR: that one is the only
+   * vertical silhouette in the set and threatens a column, this is the widest
+   * horizontal one and threatens a row. The shape is the mechanic, and the pair
+   * is legible against each other before either is legible on its own.
+   *
+   * A long roller, two end flanges it runs between, and the rail under it.
+   */
+  carriage: {
+    paths: [
+      // The roller: a wide flat drum.
+      [
+        [-0.78, -0.4],
+        [0.78, -0.4],
+        [0.78, 0.12],
+        [-0.78, 0.12],
+        [-0.78, -0.4],
+      ],
+      // Its knurl, so the drum reads as something that turns.
+      [
+        [-0.4, -0.4],
+        [-0.4, 0.12],
+      ],
+      [
+        [0.4, -0.4],
+        [0.4, 0.12],
+      ],
+      // The rail it travels along.
+      [
+        [-0.92, 0.52],
+        [0.92, 0.52],
+      ],
+      // The flanges, standing on the rail at each end.
+      [
+        [-0.78, 0.12],
+        [-0.78, 0.52],
+      ],
+      [
+        [0.78, 0.12],
+        [0.78, 0.52],
+      ],
+    ],
+    // A brush merges the knurl into the drum, so the brushed carriage drops it
+    // and says the same thing with a wider gap between roller and rail.
+    brushPaths: [
+      [
+        [-0.76, -0.44],
+        [0.76, -0.44],
+        [0.76, 0.06],
+        [-0.76, 0.06],
+        [-0.76, -0.44],
+      ],
+      [
+        [-0.94, 0.56],
+        [0.94, 0.56],
+      ],
+      [
+        [-0.76, 0.06],
+        [-0.76, 0.56],
+      ],
+      [
+        [0.76, 0.06],
+        [0.76, 0.56],
+      ],
+    ],
+    weight: 1.1,
+  },
+  /*
+   * THE CARRIAGE RETURN — the lever, and the machine it throws.
+   *
+   * Built out of the CARRIAGE's own silhouette so the boss reads as the same
+   * family grown up: the same roller and rail, plus the long return lever
+   * sweeping up and left, which is the one part of a typewriter everyone can
+   * picture. Asymmetric on purpose — the DROLLERY is the only lopsided shape in
+   * era I for exactly this reason, because a shape that is not mirror-balanced
+   * reads as WRONG before it reads as anything, which is a boss's whole job at
+   * a glance.
+   */
+  carriageReturn: {
+    paths: [
+      // The roller, wider and heavier than the carriage's.
+      [
+        [-0.84, -0.22],
+        [0.84, -0.22],
+        [0.84, 0.3],
+        [-0.84, 0.3],
+        [-0.84, -0.22],
+      ],
+      [
+        [-0.34, -0.22],
+        [-0.34, 0.3],
+      ],
+      [
+        [0.34, -0.22],
+        [0.34, 0.3],
+      ],
+      // The rail.
+      [
+        [-0.96, 0.7],
+        [0.96, 0.7],
+      ],
+      [
+        [-0.84, 0.3],
+        [-0.84, 0.7],
+      ],
+      [
+        [0.84, 0.3],
+        [0.84, 0.7],
+      ],
+      // The return lever: up and out to the left, with a grip on the end.
+      [
+        [-0.6, -0.22],
+        [-0.72, -0.72],
+        [-0.16, -0.96],
+      ],
+    ],
+    weight: 1.25,
   },
   stalker: {
     paths: [
@@ -165,6 +424,35 @@ export const ENEMY_GLYPHS: Record<EnemyKind, GlyphDef> = {
 };
 
 export const ITEM_GLYPHS: Record<ItemKind, GlyphDef> = {
+  /*
+   * GESSO — the ground laid over a page before anything is written on it.
+   *
+   * A shield shape, because that is what it does, but drawn as a laid PANEL with
+   * a burnished edge rather than a heater shield: this is a coat applied to the
+   * page, not a piece of armour someone is carrying.
+   */
+  gesso: {
+    paths: [
+      [
+        [-0.62, -0.66],
+        [0.62, -0.66],
+        [0.62, 0.18],
+        [0, 0.82],
+        [-0.62, 0.18],
+        [-0.62, -0.66],
+      ],
+      // The burnish: a diagonal sheen across the laid ground.
+      [
+        [-0.34, -0.3],
+        [0.3, -0.3],
+      ],
+      [
+        [-0.34, 0.06],
+        [0.14, 0.06],
+      ],
+    ],
+    weight: 1.05,
+  },
   vial: {
     // An ink droplet.
     paths: [
@@ -234,8 +522,8 @@ export interface DrawOpts {
   widthScale?: number;
   dash?: number[];
   passes?: number;
-  /** Render with a loaded brush rather than a nib. */
-  brush?: boolean;
+  /** Which instrument makes the mark. Defaults to the nib. */
+  mark?: Mark;
   /** Skip the cache — for one-off marks that will never repeat. */
   uncached?: boolean;
   /**
@@ -268,7 +556,57 @@ function paintGlyph(ctx: CanvasRenderingContext2D, def: GlyphDef, o: DrawOpts): 
     ctx.restore();
   }
 
-  if (o.brush) {
+  /*
+   * MISREGISTRATION, applied to the whole glyph and nothing smaller.
+   *
+   * A typed character is one strike of one bar, so it lands slightly off its
+   * place on the line and slightly off square — together, not stroke by stroke.
+   * Jittering the strokes independently reads as a shaky hand, which is the
+   * thing this era exists to stop reading as.
+   *
+   * Small numbers on purpose: about 3% of a cell and under two degrees. Past
+   * that it stops looking like a machine out of adjustment and starts looking
+   * like a mistake.
+   */
+  let ribbon = 1;
+  if (o.mark === 'type') {
+    ctx.save();
+    ctx.translate(
+      (hash3(o.seed + 31, 0, 0) - 0.5) * o.size * 0.06,
+      (hash3(o.seed + 32, 0, 0) - 0.5) * o.size * 0.06,
+    );
+    ctx.rotate((hash3(o.seed + 33, 0, 0) - 0.5) * 0.055);
+    // And the ribbon is unevenly inked from character to character, not only
+    // along one stroke — some letters simply come out grey.
+    ribbon = 0.76 + hash3(o.seed + 34, 0, 0) * 0.24;
+  }
+
+  if (o.mark === 'type') {
+    /*
+     * The NIB silhouettes, not the brush ones.
+     *
+     * `brushPaths` exists because a brush mark is twice the width of the same
+     * stroke and close parallel detail merges — the WARDEN's three body bars had
+     * to become two. A struck mark is a hard thin face, much closer to a nib than
+     * to a brush, so it can carry the full detail and should: taking the brush's
+     * simplified paths cost the warden its bars for no reason.
+     *
+     * Barely heavier than the nib. A slug is a solid face rather than a drawn
+     * line, but 1.15x was enough to close the drollery's mouth.
+     */
+    const w = o.size * 0.075 * (def.weight ?? 1) * (o.widthScale ?? 1) * 1.04;
+    def.paths.forEach((path, i) => {
+      strikeStroke(ctx, path.map(map), {
+        color: o.color,
+        width: w,
+        seed: o.seed + i * 313,
+        amp: o.size * 0.004,
+        alpha: alpha * ribbon,
+        boil: o.boil ?? 0,
+        wear: 0.38,
+      });
+    });
+  } else if (o.mark === 'brush') {
     // 1.85x read as a blot rather than a brush mark — at that weight a 5x5 board
     // of actors is mostly ink, and the silhouettes stop being distinguishable at
     // a glance, which is the one thing they have to do. The variation that was
@@ -306,12 +644,23 @@ function paintGlyph(ctx: CanvasRenderingContext2D, def: GlyphDef, o: DrawOpts): 
 
   for (const [dx, dy, r] of def.dots ?? []) {
     ctx.save();
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = alpha * ribbon;
     ctx.fillStyle = o.color;
-    blobPath(ctx, dx * half, dy * half, r * half, o.seed + 77, 0.3, 9, o.boil ?? 0);
-    ctx.fill();
+    if (o.mark === 'type') {
+      // A struck dot is a slug face, not a blob. Square, like everything else
+      // a machine puts on a page.
+      const s = r * half * 1.7;
+      ctx.fillRect(dx * half - s / 2, dy * half - s / 2, s, s);
+    } else {
+      blobPath(ctx, dx * half, dy * half, r * half, o.seed + 77, 0.3, 9, o.boil ?? 0);
+      ctx.fill();
+    }
     ctx.restore();
   }
+
+  // Closes the misregistration transform opened above, after the dots so the
+  // whole character has shifted as one thing.
+  if (o.mark === 'type') ctx.restore();
 }
 
 /**
@@ -394,7 +743,7 @@ export function drawGlyph(
     Math.round(rot * 100),
     Math.round((o.widthScale ?? 1) * 20),
     o.passes ?? 2,
-    o.brush ? 'b' : 'n',
+    o.mark ?? 'nib',
   ].join('|');
 
   const dpr = Math.min(window.devicePixelRatio || 1, 2.5);

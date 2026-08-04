@@ -72,11 +72,11 @@ export function DeathScreen({ hud, onAgain }: { hud: Hud; onAgain: () => void })
   return (
     <div className="overlay">
       <div className="panel">
-        <h1 className="epitaph">The ink is dry</h1>
-        <p className="tagline">No corrections</p>
+        <h1 className="epitaph">{hud.faded ? 'Worn through' : 'The ink is dry'}</h1>
+        <p className="tagline">{hud.faded ? 'You retraced one step too many' : 'No corrections'}</p>
 
         <dl className="summary">
-          <dt>Depth</dt>
+          <dt>Page</dt>
           <dd>{hud.depth}</dd>
           <dt>Felled</dt>
           <dd>{hud.kills}</dd>

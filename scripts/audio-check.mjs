@@ -59,8 +59,12 @@ const report = await page.evaluate(async () => {
   const events = [
     { t: 'move', phase: 'p', from: { x: 0, y: 0 }, to: { x: 1, y: 0 }, dir: 'right' },
     { t: 'blocked', phase: 'p', pos: { x: 0, y: 0 }, dir: 'left' },
-    { t: 'bump', phase: 'p', from: { x: 1, y: 1 }, to: { x: 2, y: 1 }, dir: 'right', dmg: 1, combo: 0, killed: false, kind: 'rat', id: 1 },
-    { t: 'bump', phase: 'p', from: { x: 1, y: 1 }, to: { x: 2, y: 1 }, dir: 'right', dmg: 4, combo: 3, killed: true, kind: 'warden', id: 2 },
+    { t: 'wait', phase: 'p', pos: { x: 1, y: 1 } },
+    { t: 'bump', phase: 'p', from: { x: 1, y: 1 }, to: { x: 2, y: 1 }, dir: 'right', dmg: 1, combo: 0, killed: false, kind: 'rat', id: 1, broke: true },
+    { t: 'bump', phase: 'p', from: { x: 1, y: 1 }, to: { x: 2, y: 1 }, dir: 'right', dmg: 4, combo: 3, killed: true, kind: 'warden', id: 2, broke: true },
+    // Shrugged: lands, does not stop it. A different sound, not a quieter one —
+    // and `broke` must be present, or every bump silently takes this path.
+    { t: 'bump', phase: 'p', from: { x: 1, y: 1 }, to: { x: 2, y: 1 }, dir: 'right', dmg: 1, combo: 0, killed: false, kind: 'warden', id: 3, broke: false },
     { t: 'kill', phase: 'p', pos: { x: 2, y: 1 }, kind: 'warden' },
     { t: 'emove', phase: 'e', id: 3, kind: 'charger', from: { x: 4, y: 2 }, to: { x: 2, y: 2 } },
     { t: 'wind', phase: 'e', id: 3, kind: 'charger', pos: { x: 4, y: 2 } },
@@ -69,20 +73,39 @@ const report = await page.evaluate(async () => {
     { t: 'pickup', phase: 'p', pos: { x: 3, y: 3 }, kind: 'vial', amount: 3 },
     { t: 'pickup', phase: 'p', pos: { x: 3, y: 3 }, kind: 'nib', amount: 1 },
     { t: 'spill', phase: 'e', pos: { x: 0, y: 4 }, kind: 'rat' },
+    { t: 'bell', phase: 'e', pos: { x: 2, y: 2 }, width: 3 },
+    { t: 'drown', phase: 'e', pos: { x: 2, y: 2 }, dmg: 1, hpAfter: 3 },
+    { t: 'stagger', phase: 'e', id: 5, kind: 'charger', pos: { x: 3, y: 1 }, interrupted: true },
+    { t: 'stagger', phase: 'e', id: 6, kind: 'warden', pos: { x: 3, y: 1 }, interrupted: false },
     { t: 'unseal', phase: 'e', pos: { x: 4, y: 4 } },
     { t: 'descend', phase: 'p', depth: 3 },
     { t: 'death', phase: 'e', depth: 3 },
   ];
 
-  for (const ev of events) {
-    try {
-      // fire() is private by convention only; this is a test harness.
-      rt['fire'](ev);
-      results.push({ ev: ev.t + (ev.exposed ? ':exposed' : ev.killed ? ':kill' : ''), ok: true });
-    } catch (e) {
-      results.push({ ev: ev.t, ok: false, err: String(e) });
+  /*
+   * Every event in EVERY era's hand.
+   *
+   * The typed palette branches inside four of these, and a branch nobody fires
+   * is a branch that ships with an illegal envelope in it — an exponentialRamp
+   * to zero throws, and it would throw in the middle of a turn rather than here.
+   * Descending into the era first is what sets `sfx.hand`, so this drives the
+   * real wiring rather than poking the synth.
+   */
+  for (const [era, depth] of [['manuscript', 1], ['typewriter', 5]]) {
+    rt['fire']({ t: 'descend', phase: 'p', depth });
+    for (const ev of events) {
+      const label = `${era}/${ev.t}${ev.exposed ? ':exposed' : ev.killed ? ':kill' : ''}${
+        ev.broke === false ? ':shrug' : ''
+      }`;
+      try {
+        // fire() is private by convention only; this is a test harness.
+        rt['fire'](ev);
+        results.push({ ev: label, ok: true });
+      } catch (e) {
+        results.push({ ev: label, ok: false, err: String(e) });
+      }
+      await new Promise((r) => setTimeout(r, 40));
     }
-    await new Promise((r) => setTimeout(r, 60));
   }
 
   // Mute round-trip and the persistent drone.

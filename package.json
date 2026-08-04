@@ -11,8 +11,16 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "model": "vite-node scripts/model.ts",
+    "bench": "vite-node scripts/bench.ts",
     "check:swipe": "vite build && node scripts/swipe-check.mjs",
-    "shots:brush": "node scripts/brush-shots.mjs"
+    "shots:brush": "node scripts/brush-shots.mjs",
+    "shots:type": "node scripts/type-shots.mjs",
+    "shots:era": "vite build && node scripts/era-shot.mjs",
+    "shots:strike": "vite build && node scripts/strike-frames.mjs",
+    "shots:costs": "vite build && node scripts/costs-shot.mjs",
+    "check:cards": "vite build && node scripts/cards-check.mjs",
+    "check:audio": "vite build && node scripts/audio-check.mjs",
+    "check:drown": "vite build && node scripts/drown-check.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

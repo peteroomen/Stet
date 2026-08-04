@@ -1,8 +1,34 @@
 import { useEffect } from 'react';
-import type { Dir } from '../game/types';
+import type { Action, Dir } from '../game/types';
 
 /** Pixels of travel before a drag counts as a swipe. */
 const THRESHOLD = 22;
+
+/**
+ * Longest a press can last and still count as a TAP rather than a hesitant
+ * swipe.
+ *
+ * A tap holds your ground, and holds are rationed — two a floor — so a swipe
+ * that started and thought better of itself must not silently spend one. Short
+ * and deliberate is the whole signal.
+ */
+const TAP_MS = 260;
+
+/**
+ * How far a HELD drag must travel to earn each step after the first, as a
+ * fraction of a tile.
+ *
+ * This was the whole bug behind "one right swipe landed me five tiles away".
+ * Chained steps used the same 22 px threshold as the first one — and 22 px is
+ * about a third of a tile on a phone — so a drag walked roughly three tiles for
+ * every tile of travel. A 200 px swipe, which is an ordinary thumb movement,
+ * could spend five turns.
+ *
+ * "A held drag traces a path" has to mean the path your thumb actually drew. One
+ * tile of travel, one tile of movement. The first step keeps the small threshold
+ * because a flick has to stay responsive; nothing after it does.
+ */
+const CHAIN_TILES = 0.9;
 
 /**
  * Minimum time between two steps fired by ONE continuous drag.
@@ -37,12 +63,14 @@ const STEP_MS = 130;
  * traced, so it walks tile by tile, which is the thing that makes this good in a
  * thumb and is worth keeping.
  *
- * Time is the only signal that separates them. Distance cannot: a flick and the
- * first half of a deliberate drag cover exactly the same pixels, and at a 22 px
- * threshold — a quarter of a tile on a 390 px phone — every ordinary swipe
- * crossed it two or three times.
+ * Time is the first signal that separates them, and distance is the second: a
+ * flick and the first half of a deliberate drag cover the same pixels, but a
+ * drag that means to trace a path keeps going for a tile at a time. Raised from
+ * 260 ms because 260 ms is an ordinary swipe, not a deliberate trace — together
+ * with CHAIN_TILES this is what stops a normal thumb movement spending five
+ * turns.
  */
-const HOLD_MS = 260;
+const HOLD_MS = 420;
 
 const KEY_MAP: Record<string, Dir> = {
   ArrowUp: 'up',
@@ -65,7 +93,8 @@ const KEY_MAP: Record<string, Dir> = {
 };
 
 export interface ControlHandlers {
-  onDir: (dir: Dir) => void;
+  onDir: (act: Action) => void;
+  /** A clean tap: begins a run on the title and death screens, holds in play. */
   onConfirm: () => void;
   onGesture?: () => void;
   enabled?: boolean;
@@ -92,7 +121,19 @@ export function useControls(
         if (enabled) onDir(dir);
         return;
       }
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'r' || e.key === 'R') {
+      // Hold your ground. '.' is the roguelike convention; space is the one
+      // people try first. Enter still confirms, so the title and death screens
+      // are unaffected.
+      if (enabled && (e.key === '.' || e.key === ' ')) {
+        e.preventDefault();
+        onGesture?.();
+        onDir('wait');
+        return;
+      }
+      // `enabled` gates onConfirm too. It used to gate only onDir, so while the
+      // card hand was up a space press fell straight through to confirm — and
+      // confirm, on a screen that is not `playing`, starts a new run.
+      if (enabled && (e.key === 'Enter' || e.key === ' ' || e.key === 'r' || e.key === 'R')) {
         e.preventDefault();
         onGesture?.();
         onConfirm();
@@ -114,8 +155,27 @@ export function useControls(
     let downAt = 0;
     let lastFire = 0;
 
+    /**
+     * One tile, in CSS pixels, mirroring `geometry()` in the renderer: the board
+     * is the smaller of the stage's two dimensions, padded 7.8% a side for the
+     * illuminated margin, divided into five.
+     */
+    const tilePx = () => {
+      const size = Math.min(el.clientWidth, el.clientHeight);
+      return (size - size * 0.156) / 5;
+    };
+
     const down = (e: PointerEvent) => {
       if (!e.isPrimary) return;
+      /*
+       * Disabled means this element takes no part in the gesture at all.
+       *
+       * Not merely "fires no handlers": the card overlay is rendered INSIDE this
+       * element, and capturing the pointer here swallowed the click before it
+       * ever reached the button on top. Taps on a card did nothing whatsoever,
+       * which is a worse failure than the one that made this guard necessary.
+       */
+      if (!enabled) return;
       active = true;
       moved = false;
       ox = e.clientX;
@@ -133,7 +193,10 @@ export function useControls(
       if (!active || e.pointerId !== pointerId) return;
       const dx = e.clientX - ox;
       const dy = e.clientY - oy;
-      if (Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) return;
+      // The first step of a gesture is a flick and stays cheap. Every step after
+      // it has to be dragged for, a tile at a time.
+      const need = lastFire === 0 ? THRESHOLD : Math.max(THRESHOLD, tilePx() * CHAIN_TILES);
+      if (Math.abs(dx) < need && Math.abs(dy) < need) return;
 
       // Already stepped on this drag. A second step has to be asked for: the
       // pointer must have been held past HOLD_MS, and STEP_MS must have passed
@@ -159,8 +222,11 @@ export function useControls(
       active = false;
       pointerId = -1;
       el.releasePointerCapture?.(e.pointerId);
-      // A clean tap (no drag) confirms — used by the title and death screens.
-      if (!moved) onConfirm();
+      // A clean, SHORT tap confirms. The time bound is what stops a swipe that
+      // never quite committed from spending one of your rationed holds, and
+      // `enabled` is what stops a tap aimed at a card on the overlay above this
+      // element from being read as a tap on the board underneath it.
+      if (enabled && !moved && e.timeStamp - downAt <= TAP_MS) onConfirm();
     };
 
     const cancel = () => {

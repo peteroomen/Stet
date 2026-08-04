@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildAnim } from './renderer';
-import { newGame, step } from '../game/engine';
+import { buildAnim, motionAt } from './renderer';
+import { chooseTrait, newGame, step } from '../game/engine';
 import type { Dir, Ev } from '../game/types';
 
 /**
@@ -15,6 +15,9 @@ import type { Dir, Ev } from '../game/types';
 describe('the turn timeline schedules everything', () => {
   const ALL_EVENTS: Ev['t'][] = [
     'blocked',
+    'wait',
+    'offer',
+    'trait',
     'move',
     'bump',
     'kill',
@@ -24,6 +27,8 @@ describe('the turn timeline schedules everything', () => {
     'pickup',
     'stagger',
     'spill',
+    'bell',
+    'drown',
     'unseal',
     'descend',
     'death',
@@ -35,6 +40,9 @@ describe('the turn timeline schedules everything', () => {
     const to = { x: 2, y: 1 };
     const samples: Record<Ev['t'], Ev> = {
       blocked: { t: 'blocked', phase: 'p', pos: at, dir: 'left' },
+      wait: { t: 'wait', phase: 'p', pos: at },
+      offer: { t: 'offer', phase: 'p', ids: ['vellum'] },
+      trait: { t: 'trait', phase: 'p', id: 'vellum' },
       move: { t: 'move', phase: 'p', from: at, to, dir: 'right' },
       bump: {
         t: 'bump',
@@ -48,6 +56,7 @@ describe('the turn timeline schedules everything', () => {
         kind: 'rat',
         id: 1,
         broke: true,
+        glance: false,
       },
       kill: { t: 'kill', phase: 'p', pos: to, kind: 'rat' },
       emove: { t: 'emove', phase: 'e', id: 1, kind: 'rat', from: at, to },
@@ -66,9 +75,11 @@ describe('the turn timeline schedules everything', () => {
       pickup: { t: 'pickup', phase: 'p', pos: to, kind: 'vial', amount: 3 },
       stagger: { t: 'stagger', phase: 'e', id: 1, kind: 'charger', pos: at, interrupted: true },
       spill: { t: 'spill', phase: 'e', pos: to, kind: 'rat' },
+      bell: { t: 'bell', phase: 'e', pos: at, width: 2 },
+      drown: { t: 'drown', phase: 'e', pos: at, dmg: 1, hpAfter: 4 },
       unseal: { t: 'unseal', phase: 'e', pos: to },
       descend: { t: 'descend', phase: 'p', depth: 2 },
-      death: { t: 'death', phase: 'e', depth: 2 },
+      death: { t: 'death', phase: 'e', depth: 2, cause: 'blow' },
     };
 
     const anim = buildAnim([samples[t]]);
@@ -106,7 +117,13 @@ describe('the turn timeline schedules everything', () => {
     let seen = 0;
     for (let run = 0; run < 30; run++) {
       let s = newGame(run * 131 + 7);
-      for (let i = 0; i < 200 && s.screen === 'playing'; i++) {
+      for (let i = 0; i < 200 && s.screen !== 'dead'; i++) {
+        // A descent holds the run open on a card hand; take one and carry on,
+        // or the sweep stops at the first floor and never sees a deep board.
+        if (s.screen === 'choosing') {
+          s = chooseTrait(s, s.offer[0]).state;
+          continue;
+        }
         const r = step(s, nearestFoe(s));
         const scheduled = new Set(buildAnim(r.events).cues.map((c) => c.ev));
         for (const ev of r.events) {
@@ -136,3 +153,76 @@ function nearestFoe(s: ReturnType<typeof newGame>): Dir {
   if (Math.abs(dx) >= Math.abs(dy)) return dx === 0 ? (dy > 0 ? 'down' : 'up') : dx > 0 ? 'right' : 'left';
   return dy > 0 ? 'down' : 'up';
 }
+
+/**
+ * Taking the stairs rebuilds the board inside the same turn, so the `move` event
+ * that carried you onto them belongs to the floor you just LEFT. Animating it
+ * over the new floor slid the hero across the page on every descent — reported
+ * as "I still teleport weirdly sometimes" — and could draw you standing on one
+ * of the new floor's foes for the length of the step.
+ */
+describe('a descent animates nothing', () => {
+  it('drops the player motion when the floor changed under it', () => {
+    const anim = buildAnim([
+      { t: 'move', phase: 'p', from: { x: 3, y: 0 }, to: { x: 4, y: 0 }, dir: 'right' },
+      { t: 'descend', phase: 'p', depth: 4 },
+    ]);
+    expect(anim.playerMotion).toBeNull();
+    // The descent still gets its cue, so the sound and the page-turn flash fire.
+    expect(anim.cues.some((c) => c.ev.t === 'descend')).toBe(true);
+  });
+
+  it('still animates an ordinary step', () => {
+    const anim = buildAnim([
+      { t: 'move', phase: 'p', from: { x: 3, y: 0 }, to: { x: 4, y: 0 }, dir: 'right' },
+    ]);
+    expect(anim.playerMotion).not.toBeNull();
+  });
+});
+
+/**
+ * Where a finished motion rests. A bump never advances, so it must end on the
+ * tile it started from — `to` is the tile it swung at. Returning `to` is what
+ * left the hero standing on top of the foe it had just hit for most of the turn.
+ */
+describe('a finished motion rests where it belongs', () => {
+  const bump = buildAnim([
+    {
+      t: 'bump',
+      phase: 'p',
+      from: { x: 2, y: 2 },
+      to: { x: 3, y: 2 },
+      dir: 'right',
+      dmg: 1,
+      combo: 0,
+      killed: false,
+      kind: 'rat',
+      id: 1,
+      broke: true,
+      glance: false,
+    },
+  ]).playerMotion!;
+
+  it('leaves a finished bump on the tile it swung FROM', () => {
+    // Long past the end of the stroke — which is most of the turn, and all of
+    // the idle time before the next input.
+    expect(motionAt(bump, 99999).pos).toEqual({ x: 2, y: 2 });
+  });
+
+  it('never draws the bump past the tile it swung at', () => {
+    for (let t = 0; t <= bump.t1; t += 5) {
+      const { pos } = motionAt(bump, t);
+      expect(pos.y).toBe(2);
+      // Reach is a fraction of a tile: it must never arrive.
+      expect(pos.x).toBeGreaterThanOrEqual(2);
+      expect(pos.x).toBeLessThan(2.5);
+    }
+  });
+
+  it('leaves a finished step ON its destination', () => {
+    const move = buildAnim([
+      { t: 'move', phase: 'p', from: { x: 2, y: 2 }, to: { x: 3, y: 2 }, dir: 'right' },
+    ]).playerMotion!;
+    expect(motionAt(move, 99999).pos).toEqual({ x: 3, y: 2 });
+  });
+});

@@ -1,9 +1,21 @@
-import { ENEMY_STATS, intentThreatens, makeEnemy, planIntent } from './enemies';
-import { generateFloor } from './floors';
-import { DIR_VEC, add, allTiles, chebyshev, eq, inBounds } from './grid';
+import {
+  ENEMY_STATS,
+  pageAt,
+  intentThreatens,
+  makeEnemy,
+  planIntent,
+  ringsBell,
+  spawnsOnWind,
+  strides,
+} from './enemies';
+import { eraAt, isAfterBoss, isBossFloor } from './eras';
+import { MAX_ENEMIES, generateFloor } from './floors';
+import { DIR_VEC, ORTHO, add, allTiles, chebyshev, eq, inBounds } from './grid';
 import { Rng, randomSeed } from './rng';
 import { SHIPPED, type Rules } from './rules';
-import type { Dir, Enemy, Ev, GameState, StepResult, Vec } from './types';
+import { TRAIT_BY_ID, applyTraitRules, offerTraits } from './traits';
+import { cloneState } from './types';
+import type { Action, Dir, Enemy, Ev, GameState, StepResult, Vec } from './types';
 
 /**
  * Measured, not guessed. Simulated runs at 6 / 7 / 8 HP, played by a bot with
@@ -17,9 +29,14 @@ import type { Dir, Enemy, Ev, GameState, StepResult, Vec } from './types';
  */
 export const START_HP = 7;
 export const START_DMG = 1;
-/** Combo bonus ceiling. Four swings in and you're at +3; the risk stops scaling too. */
+/**
+ * Combo bonus ceiling — the default. Lives on `Rules` as `comboCap` so a trait
+ * can raise it; this is what a run starts with.
+ */
 export const MAX_COMBO = 3;
 export const VIAL_HEAL = 3;
+/** What a spill costs when the page has no room left to put it. See below. */
+export const DROWN_DMG = 1;
 
 /* ---------------------------------------------------------------------------
  * The spill.
@@ -48,7 +65,11 @@ export const spillEvery = (d: GameState, over: number): number => {
   // costs more the longer it goes on. Without it the trickle is flat, and a flat
   // trickle is farmable by anything that makes killing cheap (see rules.ts).
   const ramp = d.rules.spillRampTurns > 0 ? Math.floor(over / d.rules.spillRampTurns) : 0;
-  return Math.max(1, d.rules.spillBase - Math.floor(d.depth / 9) - ramp);
+  // Every N marginalia taken, the page fills a turn sooner. Power is coupled
+  // straight to pressure, because the threat budget saturates and this does not.
+  const built =
+    d.rules.spillPerTraits > 0 ? Math.floor(d.traits.length / d.rules.spillPerTraits) : 0;
+  return Math.max(1, d.rules.spillBase - Math.floor(d.depth / 9) - ramp - built);
 };
 
 /** Bigger floors get more quiet; deeper ones get less. */
@@ -70,6 +91,9 @@ export function newGame(seed: number = randomSeed(), rules: Rules = SHIPPED): Ga
       exposed: false,
       combo: 0,
       flow: false,
+      ink: rules.fadeMax,
+      ward: 0,
+      trail: [],
       facing: 'up',
     },
     enemies: [],
@@ -85,6 +109,9 @@ export function newGame(seed: number = randomSeed(), rules: Rules = SHIPPED): Ga
     floorHpLost: 0,
     floorHpRallied: 0,
     spillClock: 0,
+    floorWaits: 0,
+    traits: [],
+    offer: [],
   };
   enterFloor(s, []);
   return s;
@@ -112,16 +139,79 @@ function enterFloor(d: GameState, ev: Ev[]): void {
   d.player.exposed = false;
   d.player.combo = 0;
   d.player.flow = false;
+  // A fresh page, a fresh charge of ink. The fade is a per-floor clock, exactly
+  // like the spill it is a candidate to replace.
+  d.player.ink = d.rules.fadeMax;
+  // Seeded with where you arrive, not left empty: the trail records where a turn
+  // ENDS, so an unseeded one forgets the tile you started on and the very first
+  // step-out-and-back — the most basic juke there is — came out free.
+  d.player.trail = [{ ...f.playerStart }];
   d.floorTurns = 0;
   d.floorHpLost = 0;
   d.floorHpRallied = 0;
   d.spillClock = 0;
+  d.floorWaits = 0;
   d.chain = 0;
   d.grace = spillGrace(f.enemies.length, d.depth);
   d.stats.deepest = Math.max(d.stats.deepest, d.depth);
 
   replan(d);
   ev.push({ t: 'descend', phase: 'p', depth: d.depth });
+
+  /*
+   * The marginalia. The floor is already built and waiting; the run simply does
+   * not accept a turn until a card is taken.
+   *
+   * Never on the first floor — you arrive with nothing, and a choice before you
+   * have played a turn is a choice made blind.
+   */
+  if (d.rules.traitsPerDescent > 0 && d.depth > 1) {
+    const rng2 = new Rng(d.rng);
+    const hurt = d.player.hp < d.player.maxHp;
+    // Surviving a boss widens the hand by one. It is the whole reward, and it
+    // costs no new machinery — a boss floor is simply worth a better choice.
+    const count = d.rules.traitsPerDescent + (isAfterBoss(d.depth) ? 1 : 0);
+    const offer = offerTraits(
+      d.traits,
+      (n) => rng2.int(n),
+      count,
+      hurt,
+      d.rules.maxTraits,
+      // The hand dealt as you ARRIVE on a boss floor always carries a rare.
+      isBossFloor(d.depth),
+    );
+    d.rng = rng2.s;
+    if (offer.length > 0) {
+      d.offer = offer.map((t) => t.id);
+      d.screen = 'choosing';
+      ev.push({ t: 'offer', phase: 'p', ids: [...d.offer] });
+    }
+  }
+}
+
+/**
+ * Take one of the marginalia on offer.
+ *
+ * Separate from `step()` because it is not a turn: nothing on the board moves,
+ * no enemy acts, and the floor you were just handed is untouched. It only
+ * unblocks the run.
+ */
+export function chooseTrait(state: GameState, id: string): StepResult {
+  if (state.screen !== 'choosing' || !state.offer.includes(id)) {
+    return { state, events: [], spent: false };
+  }
+  const trait = TRAIT_BY_ID.get(id);
+  if (!trait) return { state, events: [], spent: false };
+
+  const d: GameState = cloneState(state);
+  d.rules = applyTraitRules(d.rules, trait);
+  trait.player?.(d.player);
+  // MEND is spent, not kept: it can be taken again on the next floor, and a run
+  // that healed four times has not "built" anything.
+  if (trait !== TRAIT_BY_ID.get('mend')) d.traits.push(id);
+  d.offer = [];
+  d.screen = 'playing';
+  return { state: d, events: [{ t: 'trait', phase: 'p', id }], spent: false };
 }
 
 const isBlot = (d: GameState, v: Vec) => d.blots.some((b) => eq(b, v));
@@ -148,12 +238,123 @@ function spillSite(d: GameState, rng: Rng): Vec | null {
  * identical, so this is behaviour-preserving for the shipped rules.
  */
 function shouldSpill(d: GameState): boolean {
+  // A boss floor does not fill WHILE THE BOSS LIVES. The boss is its own clock,
+  // and two clocks on one board is not a duel — but the moment it dies the duel
+  // is over and the ordinary rules of the page resume.
+  if (isBossFloor(d.depth) && d.enemies.some((e) => e.kind === eraAt(d.depth).boss)) {
+    return false;
+  }
   const over = d.floorTurns - d.grace;
   if (over <= 0) return false;
   d.spillClock += 1;
   if (d.spillClock < spillEvery(d, over)) return false;
   d.spillClock = 0;
   return true;
+}
+
+/**
+ * Everything that follows from a foe dying, wherever the blow came from.
+ *
+ * Pulled out when a stroke stopped being able to hit only one thing. A card that
+ * carries the stroke through, or catches what you are touching, can kill on a
+ * tile you did not aim at — and every one of these consequences has to happen
+ * there too or they become a way to launder the rules.
+ *
+ * MOMENTUM is deliberately NOT here. A free action is granted for the kill you
+ * committed to, never for one you caught in passing, or a splash card would turn
+ * a crowd into an engine.
+ */
+function killEnemy(victim: Enemy, d: GameState, at: Vec, ev: Ev[]): void {
+  const r = d.rules;
+  const p = d.player;
+
+  d.enemies = d.enemies.filter((e) => e.id !== victim.id);
+  d.stats.kills += 1;
+  ev.push({ t: 'kill', phase: 'p', pos: { ...at }, kind: victim.kind });
+
+  /*
+   * Kill the DROLLERY and everything it drew fades with it.
+   *
+   * The fiction says so — they are its marginal scribbles, not creatures — and
+   * the mechanics need it. A boss floor carries no spill, so anything outliving
+   * the boss has no clock behind it at all: measured, a 1-ply bot kited a single
+   * leftover rat around a cleared boss floor for four thousand turns in 9 runs
+   * of 40. It is also the right shape for a boss fight, because it makes
+   * ignoring the adds and bursting the boss down a real strategy.
+   *
+   * Not counted as kills. You did not kill them; you killed the hand that drew
+   * them.
+   */
+  if (isBossFloor(d.depth) && victim.kind === eraAt(d.depth).boss) {
+    for (const e of d.enemies) {
+      ev.push({ t: 'kill', phase: 'p', pos: { ...e.pos }, kind: e.kind });
+    }
+    d.enemies = [];
+  }
+
+  /*
+   * A kill is ink back on the page, and it clears the trail.
+   *
+   * A KILL, not a swing. Clearing on any stroke was launderable and the harness
+   * found it immediately: strike-move-strike-move never accumulates a trail at
+   * all, so on a crowded board — where there is always something to swing at —
+   * wear costs nothing forever. Measured, one run in sixty sat at depth 31 with
+   * seventeen bodies on the board, one health, and a FULL charge of ink after
+   * three and a half thousand turns on the floor.
+   *
+   * Killing is bounded by what is actually there to kill, so it cannot be farmed
+   * the same way — and it says the design's oldest thesis outright: aggression
+   * that accomplishes something sustains you.
+   */
+  if (r.fadeMax > 0) p.ink = Math.min(r.fadeMax, p.ink + r.fadePerKill);
+  p.trail = [];
+
+  // RALLY: a kill wins back health lost on this floor, and nothing more. Capped
+  // per floor so the spill cannot be farmed into an HP fountain.
+  if (r.rallyPerKill > 0) {
+    const room = Math.min(
+      r.rallyPerKill,
+      p.maxHp - p.hp,
+      d.floorHpLost,
+      Math.max(0, r.rallyFloorCap - d.floorHpRallied),
+    );
+    if (room > 0) {
+      p.hp += room;
+      d.floorHpRallied += room;
+      ev.push({ t: 'pickup', phase: 'p', pos: { ...at }, kind: 'vial', amount: room });
+    }
+  }
+}
+
+/**
+ * One enemy landing one blow on you.
+ *
+ * Pulled out of the walk loop when the sweep arrived, so a bar coming down on
+ * your column and a rat walking into your tile price the hit through exactly the
+ * same code: exposure doubles it, GESSO soaks it before health, and health lost
+ * is counted apart from ward lost because RALLY gives back the one and must
+ * never give back the other.
+ */
+function strike(e: Enemy, d: GameState, from: Vec, at: Vec, ev: Ev[]): void {
+  const dmg = ENEMY_STATS[e.kind].dmg * (d.player.exposed ? d.rules.exposedMult : 1);
+  const soaked = Math.min(d.player.ward, dmg);
+  d.player.ward -= soaked;
+  const toHp = dmg - soaked;
+  d.player.hp -= toHp;
+  d.stats.damageTaken += dmg;
+  d.floorHpLost += toHp;
+  d.player.flow = false; // a charge you were hit through is not a dodge
+  ev.push({
+    t: 'eattack',
+    phase: 'e',
+    id: e.id,
+    kind: e.kind,
+    from: { ...from },
+    at: { ...at },
+    dmg,
+    exposed: d.player.exposed,
+    hpAfter: Math.max(0, d.player.hp),
+  });
 }
 
 /**
@@ -175,14 +376,18 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
     // loses its wind-up and must start again, so interrupting a CHARGER mid-coil
     // is worth far more than interrupting a RAT.
     e.poise = false;
-    if (st.slow) e.ready = false;
+    // A broken stance costs a slow unit its wind-up, and costs a STRIDER its
+    // beat: it has to close again before it can sweep. Interrupting a carriage
+    // mid-row is worth the same as interrupting a charger mid-coil.
+    if (st.slow || strides(e.kind)) e.ready = false;
     ev.push({
       t: 'stagger',
       phase: 'e',
       id: e.id,
       kind: e.kind,
       pos: { ...e.pos },
-      interrupted: intent.kind === 'move' && intent.path.length > 0,
+      interrupted:
+        intent.kind === 'sweep' || (intent.kind === 'move' && intent.path.length > 0),
     });
     return;
   }
@@ -195,9 +400,67 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
   if (intent.kind === 'wind') {
     e.ready = true;
     ev.push({ t: 'wind', phase: 'e', id: e.id, kind: e.kind, pos: { ...e.pos } });
+    // A DROLLERY draws another out of the margin every time it winds, so the
+    // wind-up you fail to punish is a body you have to fight later. Capped by
+    // the board, which is what stops it running away.
+    if (spawnsOnWind(e.kind) && d.enemies.length < MAX_ENEMIES) {
+      const rng = new Rng(d.rng);
+      const site = spillSite(d, rng);
+      d.rng = rng.s;
+      if (site) {
+        const kind = eraAt(d.depth).chaff;
+        d.enemies.push(makeEnemy(d.nextId++, kind, site, rng.int(1 << 20)));
+        ev.push({ t: 'spill', phase: 'e', pos: { ...site }, kind });
+      }
+    }
     return;
   }
-  if (intent.kind === 'hold' || intent.path.length === 0) return;
+  /*
+   * A sweep. Nothing moves and nothing blocks: the tiles were committed to last
+   * turn and every one of them is struck now, so being on any of them is the
+   * whole of it. Slow units reset here exactly as they do after a walk, which is
+   * what gives the TYPEBAR its every-other-turn beat.
+   */
+  if (intent.kind === 'sweep') {
+    if (intent.tiles.some((v) => eq(v, d.player.pos))) {
+      strike(e, d, e.pos, d.player.pos, ev);
+    }
+    if (st.slow || strides(e.kind)) e.ready = false;
+    /*
+     * The bell. Rung on the turn the band runs off the foot of the page and
+     * comes back — which is also the turn it comes back WIDER.
+     *
+     * Its own event because it is the boss's one piece of teaching. A player who
+     * never learns that the bell means "one fewer row is safe from now on"
+     * experiences the fight getting arbitrarily harder rather than advancing,
+     * and that is the difference between a boss and a difficulty spike.
+     */
+    if (e.kind === 'carriageReturn' && ringsBell(d.floorTurns + 1)) {
+      ev.push({
+        t: 'bell',
+        phase: 'e',
+        pos: { ...e.pos },
+        // How much clear paper is left, which is what the bell is announcing.
+        width: pageAt(d.floorTurns + 1).shelter * 2 + 1,
+      });
+    }
+    return;
+  }
+
+  if (intent.kind === 'hold' || intent.path.length === 0) {
+    /*
+     * A STRIDER still earns its beat by standing there.
+     *
+     * `carriageStep` returns HOLD when nothing improves its line, which happens
+     * whenever it is already level with you or boxed against an edge — and both
+     * of those are exactly when it ought to be about to sweep. Falling through
+     * the early return left it permanently on the step beat, so a carriage
+     * pinned in a corner blunted itself on the wall and quietly stopped being a
+     * threat. Caught by a test written from the comment claiming otherwise.
+     */
+    if (strides(e.kind)) e.ready = true;
+    return;
+  }
 
   const from: Vec = { ...e.pos };
   let cur: Vec = { ...e.pos };
@@ -208,22 +471,7 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
 
     if (eq(next, d.player.pos)) {
       // Doubled while you are mid-swing. This is the whole cost of committing.
-      const dmg = st.dmg * (d.player.exposed ? d.rules.exposedMult : 1);
-      d.player.hp -= dmg;
-      d.stats.damageTaken += dmg;
-      d.floorHpLost += dmg;
-      d.player.flow = false; // a charge you were hit through is not a dodge
-      ev.push({
-        t: 'eattack',
-        phase: 'e',
-        id: e.id,
-        kind: e.kind,
-        from: { ...cur },
-        at: { ...next },
-        dmg,
-        exposed: d.player.exposed,
-        hpAfter: Math.max(0, d.player.hp),
-      });
+      strike(e, d, cur, next, ev);
       break; // strikes from where it stands; never enters your tile
     }
 
@@ -236,6 +484,16 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
     ev.push({ t: 'emove', phase: 'e', id: e.id, kind: e.kind, from, to: { ...cur } });
   }
   if (st.slow) e.ready = false;
+  /*
+   * A STRIDER has finished closing, so the next beat is the sweep — and it is
+   * telegraphed from the tile it just arrived on, which is the whole reason this
+   * flips here rather than at planning time. You watch it step into your row and
+   * then you have one turn to leave.
+   *
+   * Set even when the step was blocked. Otherwise a carriage boxed against a wall
+   * or a blot never reaches its own second beat and quietly stops being a threat.
+   */
+  else if (strides(e.kind)) e.ready = true;
 }
 
 /**
@@ -247,14 +505,26 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
  * Turn order — player acts, then every enemy executes the intent it committed to
  * last turn, then intents are recomputed for the next turn.
  */
-export function step(state: GameState, dir: Dir): StepResult {
+export function step(state: GameState, action: Action): StepResult {
   if (state.screen !== 'playing') return { state, events: [], spent: false };
 
-  const d: GameState = structuredClone(state);
+  const d: GameState = cloneState(state);
   const r = d.rules;
   const ev: Ev[] = [];
   const p = d.player;
-  p.facing = dir;
+
+  // Holding your ground. Costs a turn, sheds the swing — you spent it recovering
+  // rather than committing — and hands the floor to the enemy phase unchanged.
+  const waiting = action === 'wait';
+  if (waiting && !r.allowWait) return { state, events: [], spent: false };
+  // Out of holds for this floor. Costs nothing, exactly like a swipe into a wall
+  // — being killed by an input the board had already spent is not a fair death.
+  if (waiting && r.waitsPerFloor > 0 && d.floorWaits >= r.waitsPerFloor) {
+    return { state, events: [], spent: false };
+  }
+
+  const dir: Dir = waiting ? p.facing : action;
+  if (!waiting) p.facing = dir;
 
   // Where you stood when the turn opened, and what had committed to strike that
   // tile. Both are needed after the enemy phase to tell a dodge from a retreat.
@@ -264,24 +534,31 @@ export function step(state: GameState, dir: Dir): StepResult {
   const to = add(p.pos, DIR_VEC[dir]);
 
   // --- Player phase -------------------------------------------------------
-  if (!inBounds(to) || isBlot(d, to)) {
+  if (waiting) {
+    p.exposed = false;
+    p.combo = 0;
+    d.floorWaits += 1;
+    ev.push({ t: 'wait', phase: 'p', pos: { ...p.pos } });
+  } else if (!inBounds(to) || isBlot(d, to)) {
     // A wall costs you nothing. Being killed by a mis-swipe into stone is not
     // the kind of commitment this game is about.
     ev.push({ t: 'blocked', phase: 'p', pos: { ...p.pos }, dir });
     return { state: d, events: ev, spent: false };
   }
 
-  const target = d.enemies.find((e) => eq(e.pos, to));
+  // Waiting swings at nothing and steps nowhere; it falls straight through to
+  // the enemy phase below.
+  const target = waiting ? undefined : d.enemies.find((e) => eq(e.pos, to));
 
   if (target) {
-    const bonus = Math.min(p.combo, MAX_COMBO);
+    const bonus = Math.min(p.combo, r.comboCap);
     // A charged stroke lands heavier and cannot be shrugged off. Spent here
     // whether or not it kills — you only get one punish per dodge.
     const charged = p.flow;
     p.flow = false;
     const dmg = p.dmg + bonus + (charged ? r.flowBonus : 0);
     target.hp -= dmg;
-    p.combo = Math.min(p.combo + 1, MAX_COMBO);
+    p.combo = Math.min(p.combo + 1, r.comboCap);
     p.exposed = true; // you are mid-swing until you do something else
 
     // A stroke heavy enough breaks a poised stance, and that enemy's committed
@@ -307,28 +584,64 @@ export function step(state: GameState, dir: Dir): StepResult {
       id: target.id,
       /** False when the blow landed but was shrugged off. */
       broke: heavy && target.poise,
+      glance: false,
     });
 
-    if (killed) {
-      d.enemies = d.enemies.filter((e) => e.id !== target.id);
-      d.stats.kills += 1;
-      ev.push({ t: 'kill', phase: 'p', pos: { ...to }, kind: target.kind });
-
-      // RALLY: a kill wins back health lost on this floor, and nothing more.
-      // Capped per floor so the spill cannot be farmed into an HP fountain.
-      if (r.rallyPerKill > 0) {
-        const room = Math.min(
-          r.rallyPerKill,
-          p.maxHp - p.hp,
-          d.floorHpLost,
-          Math.max(0, r.rallyFloorCap - d.floorHpRallied),
-        );
-        if (room > 0) {
-          p.hp += room;
-          d.floorHpRallied += room;
-          ev.push({ t: 'pickup', phase: 'p', pos: { ...to }, kind: 'vial', amount: room });
-        }
+    /*
+     * What else the stroke caught.
+     *
+     * THE LONG NIB carries it through, one tile further down the line. THE BROAD
+     * NIB catches everything else you are touching. Both land `p.dmg` flat — no
+     * combo, no charge — and NEITHER can break a stance:
+     *
+     *   only the foe you aimed at can be interrupted.
+     *
+     * That is the rule these cards are built around. Interrupting is the game's
+     * defensive move and it has always been one a turn; a card that broke four
+     * stances at once would not be a wider stroke, it would be immunity to being
+     * surrounded. So these buy you REACH and BREADTH, never safety — and being
+     * surrounded stays as frightening as it should be while becoming answerable.
+     */
+    const glanced: Enemy[] = [];
+    if (r.strokeReach > 0) {
+      let t = to;
+      for (let i = 0; i < r.strokeReach; i++) {
+        t = add(t, DIR_VEC[dir]);
+        if (!inBounds(t) || isBlot(d, t)) break; // solid ink stops a stroke
+        const behind = d.enemies.find((e) => eq(e.pos, t));
+        if (behind) glanced.push(behind);
       }
+    }
+    if (r.strokeSplash) {
+      for (const v of ORTHO) {
+        const t = add(p.pos, v);
+        const beside = d.enemies.find((e) => eq(e.pos, t) && e.id !== target.id);
+        if (beside && !glanced.includes(beside)) glanced.push(beside);
+      }
+    }
+
+    for (const g of glanced) {
+      g.hp -= p.dmg;
+      const gKilled = g.hp <= 0;
+      ev.push({
+        t: 'bump',
+        phase: 'p',
+        from: { ...p.pos },
+        to: { ...g.pos },
+        dir,
+        dmg: p.dmg,
+        combo: 0,
+        killed: gKilled,
+        kind: g.kind,
+        id: g.id,
+        broke: false,
+        glance: true,
+      });
+      if (gKilled) killEnemy(g, d, g.pos, ev);
+    }
+
+    if (killed) {
+      killEnemy(target, d, to, ev);
 
       // MOMENTUM: the enemy phase is skipped and you act again. Enemies keep the
       // intents they already committed to, so you are moving inside a frozen
@@ -342,7 +655,7 @@ export function step(state: GameState, dir: Dir): StepResult {
       }
     }
     // You do NOT advance into the tile. A bump attack is a swing, not a step.
-  } else {
+  } else if (!waiting) {
     p.exposed = false;
     p.combo = 0;
     p.pos = { ...to };
@@ -356,6 +669,11 @@ export function step(state: GameState, dir: Dir): StepResult {
         amount = Math.min(VIAL_HEAL, p.maxHp - p.hp);
         p.hp += amount;
         d.stats.vials += 1;
+      } else if (item.kind === 'gesso') {
+        // A ground layer over the page. Stacks, and is never capped by maxHp —
+        // it is not health, it is something laid on top of you.
+        amount = 1;
+        p.ward += 1;
       } else {
         amount = 1;
         p.dmg += 1;
@@ -387,30 +705,145 @@ export function step(state: GameState, dir: Dir): StepResult {
   if (p.hp <= 0) {
     p.hp = 0;
     d.screen = 'dead';
-    ev.push({ t: 'death', phase: 'e', depth: d.depth });
+    ev.push({ t: 'death', phase: 'e', depth: d.depth, cause: 'blow' });
     d.turn += 1;
     d.stats.turns += 1;
     return { state: d, events: ev, spent: true };
   }
 
-  d.floorTurns += 1;
+  // A hold can cost more than an action, so patience is always priced. See
+  // Rules.waitCost — at parity the harness stalls runs outright.
+  d.floorTurns += waiting ? r.waitCost : 1;
 
-  // The page fills. Checked before the clear-check so a spill on the very turn
-  // you kill the last enemy keeps the floor honestly uncleared.
+  /*
+   * The fade. Every action spends ink; run out and you are gone from the page —
+   * not struck down, simply no longer written.
+   *
+   * Charged AFTER the enemy phase so a blow that kills you reads as the blow,
+   * and only on turns that were actually spent, so a swipe into a wall is free
+   * exactly the way it is for everything else.
+   */
+  if (r.fadeMax > 0) {
+    p.ink -= r.fadePerAction;
+
+    /*
+     * WEAR. Retracing your steps wears the page through.
+     *
+     * Charged on the tile you ended the turn on, so it catches the actual
+     * complaint — pacing back and forth to juke something — while a player
+     * crossing fresh paper pays nothing however long they take. That is the
+     * whole correction to the flat fade, which charged for time and therefore
+     * only ever taxed the slower player.
+     */
+    if (r.wearMemory > 0 && !waiting) {
+      if (p.trail.some((v) => eq(v, p.pos))) p.ink -= r.wearCost;
+      p.trail.unshift({ ...p.pos });
+      p.trail.length = Math.min(p.trail.length, r.wearMemory);
+    }
+    if (p.ink <= 0) {
+      p.ink = 0;
+      d.screen = 'dead';
+      ev.push({ t: 'death', phase: 'e', depth: d.depth, cause: 'fade' });
+      d.turn += 1;
+      d.stats.turns += 1;
+      return { state: d, events: ev, spent: true };
+    }
+  }
+
+  /*
+   * The page fills. Checked before the clear-check so a spill on the very turn
+   * you kill the last enemy keeps the floor honestly uncleared.
+   *
+   * ## The page only holds seven
+   *
+   * MAX_ENEMIES is a promise about the worst thing the board can ever show you.
+   * The floor generator buys against it and the DROLLERY checks it before
+   * drawing — but the spill, the one source that runs forever, never did.
+   * Measured before this: a 3-ply bot passed seven on 17% of runs and peaked at
+   * THIRTEEN bodies on depth 27. That it only bit deep is what made it worth
+   * fixing rather than shrugging at, because depth 27 is exactly where reading
+   * the page precisely matters most.
+   *
+   * ## But a cap alone hands the game back to the kiter
+   *
+   * The obvious fix — no room, no spill — was tried and is worse than the bug.
+   * With the ink switched off at seven, a 1-ply bot found the equilibrium
+   * immediately: seed 143 pinned the board at seven on depth 13 and wove between
+   * them for 3,614 turns without ever being in danger. The spill exists
+   * precisely so that cannot happen (56% of runs never ended before it), so a
+   * cap that stops the clock reintroduces the thing the mechanic was built for.
+   *
+   * ## So the ink goes where it can
+   *
+   * A page with no room left does not stop filling — it fills over YOU. One
+   * point, flat, undodgeable, and not doubled by exposure, because it is not a
+   * blow: it is the page running out of paper. This is strictly more pressure
+   * than the eighth rat it replaces and far easier to read, and it makes the
+   * spill terminating by arithmetic rather than merely by probability.
+   *
+   * The `site === null` path did the same nothing on a board too crowded to
+   * place on, so that case drowns here too rather than silently eating a spill.
+   */
   if (shouldSpill(d)) {
     const rng = new Rng(d.rng);
-    const site = spillSite(d, rng);
+    const site = d.enemies.length < MAX_ENEMIES ? spillSite(d, rng) : null;
     d.rng = rng.s;
     if (site) {
-      const e = makeEnemy(d.nextId++, 'rat', site, rng.int(1 << 20));
-      d.enemies.push(e);
-      ev.push({ t: 'spill', phase: 'e', pos: { ...site }, kind: 'rat' });
+      const kind = eraAt(d.depth).chaff;
+      d.enemies.push(makeEnemy(d.nextId++, kind, site, rng.int(1 << 20)));
+      ev.push({ t: 'spill', phase: 'e', pos: { ...site }, kind });
+    } else {
+      // GESSO takes it first, exactly as it takes a blow — it is a layer laid
+      // over the page, and this is the page coming through.
+      const soaked = Math.min(p.ward, DROWN_DMG);
+      p.ward -= soaked;
+      const toHp = DROWN_DMG - soaked;
+      p.hp -= toHp;
+      d.stats.damageTaken += DROWN_DMG;
+      d.floorHpLost += toHp;
+      ev.push({
+        t: 'drown',
+        phase: 'e',
+        pos: { ...p.pos },
+        dmg: DROWN_DMG,
+        hpAfter: Math.max(0, p.hp),
+      });
+
+      // Its own death check: the one above ran before this, in the enemy phase.
+      if (p.hp <= 0) {
+        p.hp = 0;
+        d.screen = 'dead';
+        ev.push({ t: 'death', phase: 'e', depth: d.depth, cause: 'drown' });
+        d.turn += 1;
+        d.stats.turns += 1;
+        return { state: d, events: ev, spent: true };
+      }
     }
   }
 
   if (d.enemies.length === 0 && !d.stairsOpen) {
     d.stairsOpen = true;
     ev.push({ t: 'unseal', phase: 'e', pos: { ...d.stairs } });
+
+    /*
+     * You cleared the floor while standing on the way down.
+     *
+     * Descending is normally "step ONTO the stairs", so a player already on that
+     * tile had to step off and step back — and a search bot never will, because
+     * stepping off scores strictly worse than standing on the exit. Measured, one
+     * run in thirty wedged exactly here and burned six thousand turns on a clear
+     * board with the stairs open under its feet.
+     *
+     * It has always been possible; boss floors merely made it likely, because a
+     * duel ends wherever the last blow landed. The seal breaking under you is
+     * the same event as walking onto it.
+     */
+    if (eq(p.pos, d.stairs)) {
+      d.turn += 1;
+      d.stats.turns += 1;
+      enterFloor(d, ev);
+      return { state: d, events: ev, spent: true };
+    }
   }
 
   replan(d);

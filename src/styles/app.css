@@ -119,6 +119,14 @@ body {
   background: var(--blood);
 }
 
+/* A laid ground, not a heart: gilded, and squared off rather than a drop. */
+.pip--ward {
+  background: var(--leaf);
+  border-radius: 22%;
+  transform: none;
+  box-shadow: inset 0 0 0 1.4px var(--leafDeep);
+}
+
 @keyframes pip-throb {
   0%,
   100% {
@@ -148,6 +156,30 @@ body {
   font-weight: 700;
 }
 
+/*
+ * How much page you have left to retrace over. Sits with the hearts because it
+ * is the second way a run ends, and goes blood-red on the last one.
+ */
+.retraces {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--ghost);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.retraces b {
+  color: var(--inkSoft);
+  font-weight: 700;
+}
+
+.retraces--worn,
+.retraces--worn b {
+  color: var(--blood);
+  animation: breathe 900ms ease-in-out infinite;
+}
+
 /* ---------------------------------------------------------------- state -- */
 
 .state {
@@ -156,8 +188,8 @@ body {
   justify-content: center;
   gap: 0.6rem;
   min-height: 2.1rem;
-  /* Right padding keeps the hint clear of the icon buttons. */
-  padding: 0.3rem 3.6rem 0.55rem;
+  /* Right padding keeps the line clear of the icon buttons. */
+  padding: 0.3rem 3.2rem 0.55rem;
   font-size: var(--hud);
   letter-spacing: var(--track);
   text-transform: uppercase;
@@ -207,6 +239,46 @@ body {
   font-size: 1.15em;
 }
 
+/*
+ * Mid-swing with nothing committed to reaching you. The state is real and worth
+ * showing — step away and the combo resets — but it is costing you nothing this
+ * turn, and a warning that fires when there is no danger teaches the player to
+ * stop reading it.
+ */
+.exposed--idle {
+  color: var(--ghost);
+  font-weight: 600;
+}
+
+.exposed--idle span::after {
+  background: var(--ghost);
+  opacity: 0.55;
+}
+
+/*
+ * The hold budget. A readout rather than a control — tap, space and '.' all
+ * hold — but the count is real information, because two a floor is the entire
+ * reason holding is not a stall.
+ */
+.holds {
+  color: var(--ghost);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0.16rem 0.7rem;
+  opacity: 0.7;
+}
+
+.holds--spent {
+  opacity: 0.28;
+}
+
+/* The one hint that pulses, because it is teaching an input nothing implies. */
+.hint--teach {
+  color: var(--hero);
+  opacity: 1;
+  animation: breathe 1.6s ease-in-out infinite;
+}
+
 .combo {
   display: inline-flex;
   gap: 0.2rem;
@@ -237,6 +309,217 @@ body {
   color: var(--ink);
   font-weight: 700;
   animation: breathe 900ms ease-in-out infinite;
+}
+
+/*
+ * The page is full and the ink is coming through. Faster than the ordinary
+ * spill line and set in the danger colour, because unlike the spill this is
+ * costing health every turn it stays up.
+ */
+.spilling--full {
+  color: var(--danger);
+  animation-duration: 560ms;
+}
+
+/* ---------------------------------------------------------- marginalia -- */
+
+.hud__marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  font: inherit;
+  letter-spacing: var(--track);
+  color: var(--gold);
+  background: transparent;
+  border: 0;
+  padding: 0.1rem 0.2rem;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.hud__marks:hover,
+.hud__marks:focus-visible {
+  opacity: 1;
+}
+
+.hud__marks b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* The hand. Gilded, because this is the one moment that is not about being hit. */
+.overlay--cards {
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+}
+
+.cards__depth {
+  margin: 0;
+  font-size: var(--hud);
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  color: var(--ghost);
+}
+
+.cards__title {
+  margin: 0.2rem 0 1.2rem;
+  font-size: clamp(1.5rem, 7vmin, 2.1rem);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.cards {
+  display: grid;
+  gap: 0.7rem;
+}
+
+/*
+ * The era's name, on the hand where you enter it.
+ *
+ * Larger and gilded where the page number would be, because arriving somewhere
+ * new is the one moment in a run worth announcing — and it is the only thing
+ * that teaches that eras exist at all.
+ */
+.cards__era {
+  margin: 0 0 0.15rem;
+  text-align: center;
+  font-size: 0.9rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.cards__eraNum {
+  display: block;
+  font-size: 1.9rem;
+  letter-spacing: 0.1em;
+  line-height: 1.1;
+  color: var(--leaf);
+}
+
+/*
+ * A rare mark, gilded.
+ *
+ * Scarcity only does its work if it is VISIBLE — a card that turns up one hand
+ * in four and looks like the other two is not a find, it is a coincidence. Gold
+ * is already the page's language for treasure (the gesso pip, the leaf on the
+ * border), so this borrows it rather than inventing a fourth colour.
+ */
+.card--rare {
+  border-color: var(--leaf);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--leaf) 45%, transparent);
+}
+.card--rare .card__name {
+  color: var(--gold);
+}
+.card__rare {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.55rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--leaf);
+  opacity: 0.85;
+}
+.ledger__row--rare .ledger__name {
+  color: var(--gold);
+}
+
+.card {
+  /* The rare badge is positioned against this. */
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'key name' 'key line';
+  gap: 0.1rem 0.75rem;
+  text-align: left;
+  font: inherit;
+  padding: 0.85rem 1rem;
+  background: color-mix(in srgb, var(--paper) 70%, transparent);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--gold);
+  border-radius: 3px;
+  cursor: pointer;
+  transition:
+    border-color 140ms var(--ease),
+    transform 140ms var(--ease);
+}
+
+.card:hover,
+.card:focus-visible {
+  border-left-color: var(--hero);
+  transform: translateX(2px);
+}
+
+.card__key {
+  grid-area: key;
+  align-self: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ghost);
+}
+
+.card__name {
+  grid-area: name;
+  font-weight: 700;
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.card__line {
+  grid-area: line;
+  font-size: 0.88em;
+  line-height: 1.45;
+  color: var(--inkSoft);
+}
+
+/* The ledger: what is already written, and what each of it does. */
+.ledger {
+  list-style: none;
+  margin: 0 0 1.2rem;
+  padding: 0;
+  display: grid;
+  gap: 0.7rem;
+  text-align: left;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+.ledger__row {
+  display: grid;
+  gap: 0.1rem;
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--gold);
+}
+
+.ledger__name {
+  font-weight: 700;
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.ledger__name em {
+  font-style: normal;
+  color: var(--gold);
+}
+
+.ledger__line {
+  font-size: 0.88em;
+  line-height: 1.45;
+  color: var(--inkSoft);
+}
+
+.ledger__empty {
+  color: var(--ghost);
+  margin: 0 0 1.2rem;
+}
+
+.btn--quiet {
+  opacity: 0.8;
 }
 
 /* --------------------------------------------------------------- overlay -- */
