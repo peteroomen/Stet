@@ -3,7 +3,8 @@ import { chooseTrait, newGame, step } from './engine';
 import { ERA_FLOORS } from './eras';
 import { Rng } from './rng';
 import { SHIPPED } from './rules';
-import { RARE_CHANCE, TRAITS, TRAIT_BY_ID, offerTraits } from './traits';
+import { KEYWORDS, keywordFor, markedWords, splitKeywords } from './keywords';
+import { MEND, RARE_CHANCE, TRAITS, TRAIT_BY_ID, offerTraits } from './traits';
 import type { GameState } from './types';
 
 /**
@@ -97,5 +98,56 @@ describe('rare marginalia', () => {
       expect(s.screen).toBe('choosing');
       expect(s.offer.some((id) => TRAIT_BY_ID.get(id)?.rare)).toBe(true);
     }
+  });
+});
+
+/**
+ * The vocabulary, and the promise it rests on.
+ *
+ * A card may use a jargon word only if the word is defined in one place — see
+ * `game/keywords.ts`. What makes that fair rather than obscure is that the set
+ * is CLOSED, so these are the tests that keep it closed: a marked word that
+ * resolves to nothing would ship as a bold word with no meaning behind it, which
+ * is the FOOLSCAP failure again in a new costume.
+ */
+describe('card copy', () => {
+  const all = [...TRAITS, MEND];
+
+  it('only marks words the game has defined', () => {
+    for (const t of all) {
+      for (const word of markedWords(t.line)) {
+        expect({ card: t.id, word, known: keywordFor(word) !== undefined }).toMatchObject({
+          known: true,
+        });
+      }
+    }
+  });
+
+  it('says what it does in one short line', () => {
+    for (const t of all) {
+      // Measured without the markers, which are not read by anybody.
+      const plain = t.line.replace(/\*/g, '');
+      expect({ card: t.id, len: plain.length <= 74 }).toMatchObject({ len: true });
+      expect(plain.endsWith('.')).toBe(true);
+    }
+  });
+
+  /*
+   * Every keyword has to be earned by a card that uses it. A glossary entry
+   * nothing refers to is a rule the player is asked to learn for nothing.
+   */
+  it('defines nothing it does not use', () => {
+    const used = new Set(all.flatMap((t) => markedWords(t.line).map((w) => keywordFor(w)?.label)));
+    for (const [key, kw] of Object.entries(KEYWORDS)) {
+      expect({ key, used: used.has(kw.label) }).toMatchObject({ used: true });
+    }
+  });
+
+  it('resolves a marked word into a run that carries its meaning', () => {
+    const runs = splitKeywords('+1 damage on every *stroke*.');
+    expect(runs.map((r) => r.text)).toEqual(['+1 damage on every ', 'stroke', '.']);
+    expect(runs[1].keyword?.means).toContain('Swipe into a foe');
+    // An inflected form still resolves — copy is written as English.
+    expect(splitKeywords('always *breaks*')[1].keyword?.label).toBe('break');
   });
 });

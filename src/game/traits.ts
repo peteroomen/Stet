@@ -81,7 +81,7 @@ export interface Trait {
 export const MEND: Trait = {
   id: 'mend',
   name: 'Mend',
-  line: 'Close three wounds.',
+  line: 'Heal 3 hearts.',
   axis: 'defence',
   player: (p) => {
     p.hp = Math.min(p.maxHp, p.hp + 3);
@@ -100,7 +100,7 @@ export const TRAITS: Trait[] = [
   {
     id: 'riposte',
     name: 'Riposte',
-    line: 'Step out of a committed blow and your next stroke lands +2, unblockable.',
+    line: '*Dodge* a blow and your next *stroke* carries +2 and always *breaks*.',
     axis: 'offence',
     once: true,
     rules: () => ({ flowBonus: 2 }),
@@ -116,7 +116,7 @@ export const TRAITS: Trait[] = [
   {
     id: 'vellum',
     name: 'Vellum',
-    line: 'One more heart.',
+    line: '+1 heart, and +1 to your maximum.',
     axis: 'defence',
     once: true,
     player: (p) => {
@@ -127,7 +127,7 @@ export const TRAITS: Trait[] = [
   {
     id: 'steady',
     name: 'Steady Hand',
-    line: 'Mid-swing costs you half again, not double.',
+    line: '*Mid-swing* doubles damage against you. Now it only adds half.',
     axis: 'defence',
     once: true,
     rules: () => ({ exposedMult: 1.5 }),
@@ -135,7 +135,7 @@ export const TRAITS: Trait[] = [
   {
     id: 'second-wind',
     name: 'Second Wind',
-    line: 'A third hold, every floor.',
+    line: '+1 *hold* every floor.',
     axis: 'tempo',
     once: true,
     rules: (r) => ({ waitsPerFloor: r.waitsPerFloor + 1 }),
@@ -143,14 +143,14 @@ export const TRAITS: Trait[] = [
   {
     id: 'long-memory',
     name: 'Long Memory',
-    line: 'The combo ladder climbs one rung higher.',
+    line: 'Your *combo* climbs one rung higher.',
     axis: 'offence',
     rules: (r) => ({ comboCap: r.comboCap + 1 }),
   },
   {
     id: 'rally',
     name: 'Rally',
-    line: 'A kill wins back a heart lost on this floor. Twice a floor at most.',
+    line: 'Kills heal 1 heart. Twice a floor, and only what the floor took.',
     axis: 'defence',
     once: true,
     rules: () => ({ rallyPerKill: 1, rallyFloorCap: 2 }),
@@ -168,7 +168,7 @@ export const TRAITS: Trait[] = [
   {
     id: 'whetstone',
     name: 'Whetstone',
-    line: 'Every stroke carries one more.',
+    line: '+1 damage on every *stroke*.',
     axis: 'offence',
     once: true,
     player: (p) => {
@@ -186,7 +186,7 @@ export const TRAITS: Trait[] = [
     id: 'long-nib',
     rare: true,
     name: 'The Long Nib',
-    line: 'Your stroke carries through to whatever stands behind.',
+    line: 'Your *stroke* also hits the foe behind. That one cannot be *broken*.',
     axis: 'offence',
     once: true,
     rules: () => ({ strokeReach: 1 }),
@@ -195,7 +195,7 @@ export const TRAITS: Trait[] = [
     id: 'broad-nib',
     rare: true,
     name: 'The Broad Nib',
-    line: 'Your stroke catches every foe you are touching.',
+    line: 'Your *stroke* also hits every foe beside you. Those cannot be *broken*.',
     axis: 'offence',
     once: true,
     rules: () => ({ strokeSplash: true }),
@@ -213,7 +213,7 @@ export const TRAITS: Trait[] = [
     id: 'momentum',
     rare: true,
     name: 'Momentum',
-    line: 'A kill you aimed at does not end your turn.',
+    line: 'Kill what you aimed at and act again, once a turn.',
     axis: 'tempo',
     once: true,
     rules: () => ({ killGrantsActions: 1 }),
@@ -232,7 +232,7 @@ export const TRAITS: Trait[] = [
   {
     id: 'foolscap',
     name: 'Gesso',
-    line: 'A layer over the page. Takes a blow before your health does, and never heals back.',
+    line: '+1 *gesso*. It takes the blow before your hearts do.',
     axis: 'defence',
     once: true,
     player: (p) => {
@@ -252,7 +252,7 @@ export const TRAITS: Trait[] = [
   {
     id: 'quick-page',
     name: 'Quick Page',
-    line: 'The page fills more slowly. One more turn between spills.',
+    line: '+1 turn between *spills*.',
     axis: 'tempo',
     once: true,
     rules: (r) => ({ spillBase: r.spillBase + 1 }),
