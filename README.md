@@ -263,6 +263,14 @@ patience as its optimal strategy. After a floor's grace runs out, ink wells up
 and something climbs out of it, on a cadence. Killing outpaces spilling
 comfortably. Aggression clears a floor; timidity drowns in one.
 
+**And a page with no room left fills over you.** The board holds seven bodies,
+so past that the ink has nowhere else to go: one point a spill, flat, undodgeable
+and never doubled by exposure, because it is not a blow. This is what makes the
+cap safe. Simply switching the spill off at seven was tried and is worse than
+having no cap at all — a 1-ply bot found the equilibrium at once, pinned the
+board at seven on depth 13 and wove there for 3,614 turns, which is the exact
+stall the spill was built to prevent.
+
 ## The hands
 
 | | | HP | Damage | Poise | Rule |
@@ -519,9 +527,11 @@ Four things that were not obvious until they were measured:
   reactive player **32–58 swipes**, which is attrition, not arcade. Accelerating
   the spill fixes the pace outright (32 → 15 inputs per floor) and is *still*
   wrong at every ramp tried (8/12/18/26): floors got faster **and** cleaner and
-  median depth fell anyway, because you now die to the clock. It also stalls —
-  the board caps at seven bodies, `spillSite` returns null, and the clock quietly
-  stops. Pace needs a lever that is not the spill.
+  median depth fell anyway, because you now die to the clock. It also stalled at
+  the time — the board caps at seven bodies, `spillSite` returned null, and the
+  clock quietly stopped. *(That last part is fixed: a spill with nowhere to go
+  now lands on you. The rest of the finding stands — pace needs a lever that is
+  not the spill.)*
 
 ### The mechanics the harness produced
 

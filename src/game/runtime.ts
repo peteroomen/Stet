@@ -3,6 +3,7 @@ import { Effects } from '../render/effects';
 import { EMPTY_ANIM, Renderer, buildAnim, strikeWeight, type TurnAnim } from '../render/renderer';
 import { applyThemeVars, type ThemeName } from '../render/theme';
 import { chooseTrait, demoState, newGame, step } from './engine';
+import { MAX_ENEMIES } from './grid';
 import { previewMoves, underThreat, type MoveOutcome } from './preview';
 import { randomSeed } from './rng';
 import type { Action, Ev, GameState } from './types';
@@ -60,6 +61,15 @@ export interface Hud {
   /** Turns of quiet left before the page starts filling; 0 once it has begun. */
   graceLeft: number;
   spilling: boolean;
+  /**
+   * The page is full and the ink has nowhere left to go but onto you.
+   *
+   * Worth its own line rather than folding into `spilling`, because the two say
+   * opposite things about what to do: "the page is filling" is a reason to hurry,
+   * and this is a reason to kill something RIGHT NOW. Without it the drown reads
+   * as damage from nowhere.
+   */
+  drowning: boolean;
   /** Marginalia taken this run, in order. Drives the ledger and the HUD count. */
   traits: string[];
   /** The three on the page right now, while `screen` is 'choosing'. */
@@ -92,6 +102,7 @@ function hudOf(s: GameState, best: number): Hud {
     faded: s.screen === 'dead' && s.player.hp > 0,
     graceLeft: Math.max(0, s.grace - s.floorTurns),
     spilling: s.floorTurns >= s.grace && s.enemies.length > 0,
+    drowning: s.floorTurns >= s.grace && s.enemies.length >= MAX_ENEMIES,
     traits: [...s.traits],
     offer: [...s.offer],
   };
@@ -536,6 +547,28 @@ export class Runtime {
         fx.ring(x, y, cell * 0.7, cell * 0.16, t.ink, cell * 0.04, 460);
         fx.addShake(cell * 0.045);
         fx.text(x, y - cell * 0.42, 'THE PAGE FILLS', t.ink, cell * 0.17, 1);
+        break;
+      }
+
+      /*
+       * The page had no room left, so it filled over you.
+       *
+       * Drawn as the spill's own well — the ink closing IN on your tile rather
+       * than a splash thrown outward — so it reads as the same mechanic finding
+       * you rather than as an unexplained tick of damage. The ring collapses
+       * inward, which is the one motion nothing else on the board makes.
+       */
+      case 'drown': {
+        const [x, y] = at(ev.pos);
+        sfx.drown();
+        fx.addShake(cell * 0.05);
+        fx.addFreeze(55);
+        fx.ring(x, y, cell * 1.3, cell * 0.1, t.ink, cell * 0.05, 480);
+        fx.addFlash(0.14, t.ink);
+        // The numeral only. The state line already names it, and a caption
+        // across three tiles of board is the kind of thing this HUD keeps
+        // having to have removed from it.
+        fx.text(x, y - cell * 0.3, `-${ev.dmg}`, t.ink, cell * 0.3, 1.4);
         break;
       }
 

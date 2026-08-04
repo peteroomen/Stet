@@ -208,6 +208,14 @@ export type Ev =
   | { t: 'pickup'; phase: EvPhase; pos: Vec; kind: ItemKind; amount: number }
   | { t: 'stagger'; phase: EvPhase; id: number; kind: EnemyKind; pos: Vec; interrupted: boolean }
   | { t: 'spill'; phase: EvPhase; pos: Vec; kind: EnemyKind }
+  /**
+   * The page filled with nowhere left to put it, so it filled over you.
+   *
+   * Not an `eattack`: nothing struck you, so it is never doubled by exposure and
+   * no enemy is credited with it. It is what a spill becomes once the board is
+   * at MAX_ENEMIES — see engine.ts.
+   */
+  | { t: 'drown'; phase: EvPhase; pos: Vec; dmg: number; hpAfter: number }
   | { t: 'unseal'; phase: EvPhase; pos: Vec }
   | { t: 'descend'; phase: EvPhase; depth: number }
   | { t: 'offer'; phase: EvPhase; ids: string[] }
@@ -216,8 +224,12 @@ export type Ev =
       t: 'death';
       phase: EvPhase;
       depth: number;
-      /** What ended it. `fade` means the ink ran out, not that anything hit you. */
-      cause: 'blow' | 'fade';
+      /**
+       * What ended it. `fade` means your own ink ran out; `drown` means the
+       * page's did not — it filled with no room left and came through you.
+       * Neither is a blow, and neither is credited to an enemy.
+       */
+      cause: 'blow' | 'fade' | 'drown';
     };
 
 export interface StepResult {

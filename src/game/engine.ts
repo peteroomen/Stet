@@ -25,6 +25,8 @@ export const START_DMG = 1;
  */
 export const MAX_COMBO = 3;
 export const VIAL_HEAL = 3;
+/** What a spill costs when the page has no room left to put it. See below. */
+export const DROWN_DMG = 1;
 
 /* ---------------------------------------------------------------------------
  * The spill.
@@ -594,16 +596,74 @@ export function step(state: GameState, action: Action): StepResult {
     }
   }
 
-  // The page fills. Checked before the clear-check so a spill on the very turn
-  // you kill the last enemy keeps the floor honestly uncleared.
+  /*
+   * The page fills. Checked before the clear-check so a spill on the very turn
+   * you kill the last enemy keeps the floor honestly uncleared.
+   *
+   * ## The page only holds seven
+   *
+   * MAX_ENEMIES is a promise about the worst thing the board can ever show you.
+   * The floor generator buys against it and the DROLLERY checks it before
+   * drawing — but the spill, the one source that runs forever, never did.
+   * Measured before this: a 3-ply bot passed seven on 17% of runs and peaked at
+   * THIRTEEN bodies on depth 27. That it only bit deep is what made it worth
+   * fixing rather than shrugging at, because depth 27 is exactly where reading
+   * the page precisely matters most.
+   *
+   * ## But a cap alone hands the game back to the kiter
+   *
+   * The obvious fix — no room, no spill — was tried and is worse than the bug.
+   * With the ink switched off at seven, a 1-ply bot found the equilibrium
+   * immediately: seed 143 pinned the board at seven on depth 13 and wove between
+   * them for 3,614 turns without ever being in danger. The spill exists
+   * precisely so that cannot happen (56% of runs never ended before it), so a
+   * cap that stops the clock reintroduces the thing the mechanic was built for.
+   *
+   * ## So the ink goes where it can
+   *
+   * A page with no room left does not stop filling — it fills over YOU. One
+   * point, flat, undodgeable, and not doubled by exposure, because it is not a
+   * blow: it is the page running out of paper. This is strictly more pressure
+   * than the eighth rat it replaces and far easier to read, and it makes the
+   * spill terminating by arithmetic rather than merely by probability.
+   *
+   * The `site === null` path did the same nothing on a board too crowded to
+   * place on, so that case drowns here too rather than silently eating a spill.
+   */
   if (shouldSpill(d)) {
     const rng = new Rng(d.rng);
-    const site = spillSite(d, rng);
+    const site = d.enemies.length < MAX_ENEMIES ? spillSite(d, rng) : null;
     d.rng = rng.s;
     if (site) {
       const e = makeEnemy(d.nextId++, 'rat', site, rng.int(1 << 20));
       d.enemies.push(e);
       ev.push({ t: 'spill', phase: 'e', pos: { ...site }, kind: 'rat' });
+    } else {
+      // GESSO takes it first, exactly as it takes a blow — it is a layer laid
+      // over the page, and this is the page coming through.
+      const soaked = Math.min(p.ward, DROWN_DMG);
+      p.ward -= soaked;
+      const toHp = DROWN_DMG - soaked;
+      p.hp -= toHp;
+      d.stats.damageTaken += DROWN_DMG;
+      d.floorHpLost += toHp;
+      ev.push({
+        t: 'drown',
+        phase: 'e',
+        pos: { ...p.pos },
+        dmg: DROWN_DMG,
+        hpAfter: Math.max(0, p.hp),
+      });
+
+      // Its own death check: the one above ran before this, in the enemy phase.
+      if (p.hp <= 0) {
+        p.hp = 0;
+        d.screen = 'dead';
+        ev.push({ t: 'death', phase: 'e', depth: d.depth, cause: 'drown' });
+        d.turn += 1;
+        d.stats.turns += 1;
+        return { state: d, events: ev, spent: true };
+      }
     }
   }
 

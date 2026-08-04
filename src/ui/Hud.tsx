@@ -104,6 +104,10 @@ export function StateLine({ hud, taughtHold }: { hud: HudData; taughtHold: boole
         {hud.inDanger && <span className="exposed__x2">×2</span>}
       </span>
     );
+  } else if (hud.drowning) {
+    // Above the ordinary spill line and above the grace countdown, because it
+    // is the only one of the three that is costing you health this turn.
+    body = <span className="spilling spilling--full">No room left · the ink is on you</span>;
   } else if (hud.spilling) {
     body = <span className="spilling">The page is filling</span>;
   } else if (hud.graceLeft <= 4 && hud.enemiesLeft > 0) {

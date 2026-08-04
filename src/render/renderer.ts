@@ -197,8 +197,11 @@ export function buildAnim(events: Ev[]): TurnAnim {
         total = Math.max(total, eStart + ENEMY_MS);
         break;
       case 'spill':
-        // After the enemy phase has landed, so the new arrival is not mistaken
-        // for one of the foes that just moved.
+      // After the enemy phase has landed, so the new arrival is not mistaken
+      // for one of the foes that just moved.
+      case 'drown':
+        // Same slot as the spill it replaces — it IS the spill, landing on you
+        // because the page had nowhere else to put it.
         cues.push({ at: eStart + ENEMY_MS + 40, ev });
         total = Math.max(total, eStart + ENEMY_MS + 220);
         break;

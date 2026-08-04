@@ -311,6 +311,16 @@ body {
   animation: breathe 900ms ease-in-out infinite;
 }
 
+/*
+ * The page is full and the ink is coming through. Faster than the ordinary
+ * spill line and set in the danger colour, because unlike the spill this is
+ * costing health every turn it stays up.
+ */
+.spilling--full {
+  color: var(--danger);
+  animation-duration: 560ms;
+}
+
 /* ---------------------------------------------------------- marginalia -- */
 
 .hud__marks {

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { makeSearchBrain, playRun } from './bots';
-import { newGame, step } from './engine';
-import { chebyshev, eq, manhattan } from './grid';
+import { DROWN_DMG, newGame, step } from './engine';
+import { makeEnemy } from './enemies';
+import { MAX_ENEMIES, chebyshev, eq, manhattan } from './grid';
 import { Rng } from './rng';
 import { SHIPPED } from './rules';
 import type { GameState } from './types';
@@ -48,6 +49,10 @@ function checkBoard(s: GameState, seed: number, turn: number, out: Violation[]):
 
   if (s.blots.some((b) => eq(b, p))) {
     out.push({ seed, turn, what: `player stands on a blot at ${p.x},${p.y}` });
+  }
+
+  if (s.enemies.length > MAX_ENEMIES) {
+    out.push({ seed, turn, what: `${s.enemies.length} bodies on a page that holds ${MAX_ENEMIES}` });
   }
 }
 
@@ -145,5 +150,133 @@ describe('invariants that must hold across a whole run', () => {
     }
 
     expect(out.slice(0, 8)).toEqual([]);
+  });
+});
+
+/**
+ * The page holds seven bodies, and fills anyway.
+ *
+ * The floor generator buys against MAX_ENEMIES and the DROLLERY checks it before
+ * drawing, but the spill — the only source that runs forever — never did. It
+ * only bit deep (a 3-ply bot exceeded seven on 17% of runs, peaking at thirteen
+ * on depth 27), which is precisely the wrong place for the board to stop being
+ * readable.
+ *
+ * A bare cap is not the fix, and these tests are the reason it is not: with the
+ * ink simply switched off at seven, a 1-ply bot pinned the board at seven on
+ * depth 13 and wove for 3,614 turns, which is the exact stall the spill was
+ * built to prevent. So a page with no room fills over YOU instead.
+ */
+describe('the spill respects the size of the page', () => {
+  /*
+   * A crowded floor with the ink well past due, and the player sealed into a
+   * two-tile pocket behind blots.
+   *
+   * The pocket is what makes the test about the spill and nothing else: the
+   * player can shuttle back and forth spending turns forever without ever being
+   * able to strike anything or be struck. The first version of this let the
+   * player walk on an open board, and stepping into an adjacent rat killed it —
+   * so the count fell below the cap, the spill correctly fired, and the test
+   * failed against working code.
+   */
+  function crowded(bodies: number, hp = 99): GameState {
+    const s = newGame(4242, SHIPPED);
+    const spots = [
+      { x: 3, y: 0 },
+      { x: 4, y: 0 },
+      { x: 2, y: 1 },
+      { x: 3, y: 1 },
+      { x: 4, y: 1 },
+      { x: 0, y: 2 },
+      { x: 1, y: 2 },
+    ].slice(0, bodies);
+    return {
+      ...s,
+      depth: 3,
+      floorTurns: 60,
+      grace: 0,
+      spillClock: 99, // the ink is overdue; only the cap can hold it back
+      stairs: { x: 4, y: 4 },
+      stairsOpen: false,
+      blots: [
+        { x: 2, y: 0 },
+        { x: 0, y: 1 },
+        { x: 1, y: 1 },
+      ],
+      items: [],
+      // Deep by default so a test can watch forty turns of drowning without the
+      // run ending underneath it; the terminating test passes a real total.
+      player: { ...s.player, pos: { x: 0, y: 0 }, hp, maxHp: hp },
+      enemies: spots.map((p, i) => makeEnemy(i + 1, 'rat', p, i * 17 + 3)),
+    };
+  }
+
+  /** Shuttle inside the pocket. Spends a turn, touches nothing. */
+  const shuttle = (turn: number) => (turn % 2 === 0 ? 'right' : 'left');
+
+  it('never puts an eighth body on the page', () => {
+    let s = crowded(MAX_ENEMIES);
+
+    for (let turn = 0; turn < 40; turn++) {
+      const r = step(s, shuttle(turn));
+      expect(r.spent).toBe(true);
+      s = r.state;
+      expect(r.events.filter((e) => e.t === 'spill')).toEqual([]);
+      expect(s.enemies.length).toBe(MAX_ENEMIES);
+    }
+  });
+
+  /*
+   * The other half of the claim. Without this, a spill that never fired at all
+   * would pass the test above — and the spill is the only thing standing between
+   * this game and a patient player who kites forever.
+   */
+  it('still fills a page with room on it', () => {
+    const s = crowded(MAX_ENEMIES - 1);
+    const r = step(s, 'right');
+    expect(r.events.some((e) => e.t === 'spill')).toBe(true);
+    expect(r.state.enemies.length).toBe(MAX_ENEMIES);
+  });
+
+  it('fills over you when there is no room, and does not double it for exposure', () => {
+    let s = crowded(MAX_ENEMIES);
+    s = { ...s, player: { ...s.player, exposed: true } };
+
+    const r = step(s, 'right');
+    const drowned = r.events.filter((e) => e.t === 'drown');
+    expect(drowned).toHaveLength(1);
+    expect(drowned[0]).toMatchObject({ t: 'drown', dmg: DROWN_DMG });
+    // Nothing struck you, so nothing is credited with it and exposure is
+    // irrelevant — this is the page, not a blow.
+    expect(r.events.some((e) => e.t === 'eattack')).toBe(false);
+    expect(r.state.player.hp).toBe(s.player.hp - DROWN_DMG);
+    expect(r.state.stats.damageTaken).toBe(s.stats.damageTaken + DROWN_DMG);
+  });
+
+  it('takes gesso before health, exactly as a blow does', () => {
+    let s = crowded(MAX_ENEMIES);
+    s = { ...s, player: { ...s.player, ward: 1 } };
+
+    const r = step(s, 'right');
+    expect(r.events.some((e) => e.t === 'drown')).toBe(true);
+    expect(r.state.player.ward).toBe(0);
+    expect(r.state.player.hp).toBe(s.player.hp);
+  });
+
+  /*
+   * The whole reason the drown exists rather than a bare cap. A player who lets
+   * the page fill and then refuses to engage must still run out of page.
+   */
+  it('ends a run that pins the board and hides', () => {
+    let s = crowded(MAX_ENEMIES, SHIPPED.startHp);
+
+    let turn = 0;
+    for (; turn < 400 && s.screen === 'playing'; turn++) {
+      s = step(s, shuttle(turn)).state;
+    }
+    expect(s.screen).toBe('dead');
+    // Sealed away from every enemy on the board, so the page is the only thing
+    // that can have killed you.
+    expect(turn).toBeLessThan(400);
   });
 });

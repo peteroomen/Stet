@@ -306,6 +306,19 @@ export class Sfx {
     this.tone({ at: 0.22, dur: 0.14, type: 'triangle', f0: 340, f1: 190, gain: 0.09 });
   }
 
+  /**
+   * The same well, with nowhere left to rise but through you.
+   *
+   * Deliberately the spill's own voice rather than the hurt sting: the sweep
+   * runs DOWN instead of up and there is no impact transient, because nothing
+   * struck you — the page simply closed over. It has to be recognisable as the
+   * spill or the player learns it as a random tick of damage.
+   */
+  drown(): void {
+    this.burst({ dur: 0.42, type: 'lowpass', f0: 520, f1: 140, q: 1.4, gain: 0.17, attack: 0.14 });
+    this.tone({ dur: 0.4, type: 'sine', f0: 120, f1: 52, gain: 0.18, attack: 0.1 });
+  }
+
   pickup(): void {
     this.tone({ dur: 0.1, type: 'triangle', f0: 660, f1: 990, gain: 0.16 });
     this.tone({ at: 0.06, dur: 0.16, type: 'sine', f0: 1320, gain: 0.1 });
