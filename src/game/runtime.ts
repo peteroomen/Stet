@@ -501,6 +501,23 @@ export class Runtime {
         break;
       }
 
+      /*
+       * The insertion: you were moved.
+       *
+       * No shake and no freeze — those belong to the blow that caused it, which
+       * has already fired both, and stacking them would read as being hit twice.
+       * What this needs instead is a sense of TRAVEL, so it is a run of marks
+       * laid along the tile you were pushed into, in the page's own ink rather
+       * than in blood: nothing is bleeding, something is being rearranged.
+       */
+      case 'shove': {
+        const [x, y] = at(ev.to);
+        const [fx0, fy0] = at(ev.from);
+        sfx.shove();
+        fx.swash(x, y, Math.atan2(y - fy0, x - fx0), t.inkSoft, cell * 0.75);
+        break;
+      }
+
       case 'emove': {
         // Only the two-tile lunge gets a sound; every enemy stepping every turn
         // would be noise.

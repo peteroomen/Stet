@@ -2,9 +2,9 @@
  * Eras — the medium changes, the rules do not.
  *
  * STET is a proofreader's mark, so the descent is the history of how writing
- * gets corrected: a hand-scribed manuscript, then a typewriter, then a terminal.
- * Handmade warmth to mechanical precision to cold light, and each era strips
- * something away — era I has variable pressure, era II has none but keeps
+ * gets corrected: a hand-scribed manuscript, then a typewriter, then a word
+ * processor. Handmade warmth to mechanical precision to cold light, and each era
+ * strips something away — era I has variable pressure, era II has none but keeps
  * physical misregistration, era III has neither.
  *
  * ## Why this is structure and not decoration
@@ -21,7 +21,7 @@
  * machine.
  */
 
-import { TYPEWRITER, type EraPalette, type Mark } from '../render/theme';
+import { TYPEWRITER, WORD_PROCESSOR, type EraPalette, type Mark } from '../render/theme';
 import type { EnemyKind } from './types';
 
 /** Floors per era. The last of them is the boss. */
@@ -100,12 +100,42 @@ export const ERAS: Era[] = [
     palette: TYPEWRITER,
   },
   /*
-   * III · The Terminal is designed and unbuilt.
+   * III · THE WORD PROCESSOR, depths 9–12.
    *
-   * Past era II the descent repeats the typewriter, which is honest — the threat
-   * budget and the marginalia still escalate, so a deep run is harder without
-   * pretending to be somewhere new.
+   * Rendered rather than struck, on white bond, in the colours a screen has —
+   * see `WORD_PROCESSOR` in render/theme.ts for the page and `rasterStroke` for
+   * the mark. The ladder strips something at every step: era I has variable
+   * pressure, era II has none but keeps physical misregistration, era III has
+   * neither. A glyph here lands exactly where it is put, every time, and the
+   * only irregularity left is the pixel grid it is quantised to.
+   *
+   * ## What it threatens
+   *
+   * Tiles, then lines, then AREAS. THE SELECTION marks the tile you stand on and
+   * deletes the block around the mark a turn later, which is the first threat in
+   * the game that one step cannot answer — from the middle of a three-by-three,
+   * one step is still inside it. So the question stops being "which tile is
+   * safe" or "which line am I on" and becomes "was I already leaving".
+   *
+   * THE AUTOCOMPLETE is its opposite half: it strikes the two tiles ahead of
+   * your last step, so it punishes exactly the straight line that leaving
+   * something fastest requires. Between them the era asks you to move and to
+   * keep changing your mind.
+   *
+   * The chaff is THE CURSOR, and it inserts — its blow pushes you one tile
+   * further along. It cannot kill you on its own; it can put you inside a
+   * selection, which is the whole reason era III's vermin are worth their own
+   * kind.
    */
+  {
+    id: 'wordprocessor',
+    name: 'The Word Processor',
+    roster: ['cursor', 'stalker', 'charger', 'warden', 'selection', 'autocomplete'],
+    boss: 'selectAll',
+    chaff: 'cursor',
+    hand: 'raster',
+    palette: WORD_PROCESSOR,
+  },
 ];
 
 export function eraAt(depth: number): Era {

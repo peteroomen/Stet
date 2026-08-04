@@ -188,6 +188,21 @@ export class Sfx {
    * the honest difference between the two instruments.
    */
   step(): void {
+    /*
+     * Era III: a key on a membrane, and a cursor arriving.
+     *
+     * A typebar is a lever driving a slug at paper, so it is loud, bright and
+     * mechanical. The keyboard in front of a word processor has none of that
+     * behind it — the sound is the key bottoming out on rubber and nothing else,
+     * short and dead, with no ring at all. Under it, the one thing this era adds:
+     * a tiny synthesised blip, because on a screen the mark does not make a
+     * sound and the machine has to make one FOR it.
+     */
+    if (this.hand === 'raster') {
+      this.burst({ dur: 0.02, type: 'lowpass', f0: 1800, f1: 700, q: 0.9, gain: 0.06, attack: 0.0008 });
+      this.tone({ dur: 0.022, type: 'square', f0: 1450, gain: 0.022, attack: 0.001 });
+      return;
+    }
     if (this.hand === 'type') {
       this.burst({ dur: 0.028, type: 'bandpass', f0: 3300, f1: 2100, q: 2.2, gain: 0.085, attack: 0.0008 });
       this.tone({ dur: 0.05, type: 'square', f0: 186, f1: 120, gain: 0.05, filter: 520 });
@@ -232,6 +247,54 @@ export class Sfx {
      * The SHRUG keeps its meaning and changes its cause: not a blow absorbed by
      * something too heavy, but a key that jammed before it reached the page.
      */
+    /*
+     * Era III: something is deleted.
+     *
+     * Era I is ink going down and era II is metal hitting paper — both of them
+     * are a mark being MADE. Nothing is made here. A rendered page changes by
+     * having something removed from it, so the strike is a short downward
+     * synthetic sweep with a click on the front of it: the sound an interface
+     * makes when a thing that was there is not there any more.
+     *
+     * The SHRUG is the same idea refused — a flat, single, unresolved tone, the
+     * noise a machine makes at an input it will not act on.
+     */
+    if (this.hand === 'raster') {
+      if (!o.broke) {
+        this.tone({ dur: 0.12, type: 'square', f0: 196, gain: 0.16, filter: 800, attack: 0.004 });
+        this.burst({ dur: 0.05, type: 'lowpass', f0: 600, f1: 300, q: 0.8, gain: 0.1, attack: 0.002 });
+        return;
+      }
+      this.burst({
+        dur: 0.02 + w * 0.015,
+        type: 'highpass',
+        f0: 6000,
+        f1: 2600,
+        q: 0.7,
+        gain: 0.16 + w * 0.1,
+        attack: 0.0005,
+      });
+      // The delete itself: pitched, downward, and completely clean.
+      this.tone({
+        dur: 0.09 + w * 0.1,
+        type: 'square',
+        f0: 1200 + c * 190,
+        f1: 240,
+        gain: 0.12 + w * 0.09,
+        filter: 3200,
+        attack: 0.001,
+      });
+      this.tone({
+        dur: 0.13 + w * 0.1,
+        type: 'triangle',
+        f0: 300 + c * 60,
+        f1: 90,
+        gain: 0.16 + w * 0.12,
+        attack: 0.0015,
+      });
+      return;
+    }
+
     if (this.hand === 'type') {
       if (!o.broke) {
         this.burst({ dur: 0.07, type: 'lowpass', f0: 700, f1: 190, q: 1.1, gain: 0.19, attack: 0.001 });
@@ -385,6 +448,31 @@ export class Sfx {
    */
   stagger(interrupted: boolean): void {
     /*
+     * Era III: the operation is cancelled.
+     *
+     * Still the most percussive thing in the palette, because landing one is
+     * still the best thing you can do in a turn. The cause changes for the third
+     * time: a nib snapping, then keys fouling each other, and now a machine
+     * ABORTING — a hard click and a two-note fall, which is the shape every
+     * interface has used to say "that did not happen" for forty years.
+     */
+    if (this.hand === 'raster') {
+      this.burst({
+        dur: 0.018,
+        type: 'highpass',
+        f0: 6500,
+        f1: 3000,
+        q: 0.9,
+        gain: interrupted ? 0.24 : 0.12,
+        attack: 0.0004,
+      });
+      this.tone({ dur: 0.05, type: 'square', f0: 880, gain: interrupted ? 0.12 : 0.06, filter: 2600 });
+      if (interrupted) {
+        this.tone({ at: 0.055, dur: 0.09, type: 'square', f0: 587, gain: 0.11, filter: 2000 });
+      }
+      return;
+    }
+    /*
      * Era II: the keys jam.
      *
      * Same job — the most percussive thing in the palette, because landing one is
@@ -428,6 +516,21 @@ export class Sfx {
 
   /** The page filling — ink welling up and something climbing out of it. */
   spill(): void {
+    /*
+     * Era III: something is pasted in.
+     *
+     * The manuscript's spill wells up and the typewriter's types itself; a word
+     * processor's page fills because content ARRIVES, all at once, from
+     * somewhere else. So it is a short rising pair of synthetic notes with a
+     * soft thump under them — an insertion confirmed, which is exactly the wrong
+     * kind of cheerful and is why it works.
+     */
+    if (this.hand === 'raster') {
+      this.tone({ dur: 0.07, type: 'square', f0: 523, gain: 0.09, filter: 2200, attack: 0.002 });
+      this.tone({ at: 0.06, dur: 0.1, type: 'square', f0: 784, gain: 0.09, filter: 2600, attack: 0.002 });
+      this.tone({ at: 0.02, dur: 0.24, type: 'sine', f0: 120, f1: 72, gain: 0.14, attack: 0.03 });
+      return;
+    }
     /*
      * Era II: the machine types by itself.
      *
@@ -524,6 +627,23 @@ export class Sfx {
     this.tone({ dur: 0.05, type: 'triangle', f0: 880, gain: 0.07 });
   }
 
+  /**
+   * Being moved — the insertion.
+   *
+   * Not a hurt sound: the blow that caused it already played its own, and
+   * doubling up would say you were hit twice. This is the machine doing
+   * something to the document, so it is a short synthetic slide UPWARD in pitch
+   * with a soft edge — text shifting along a line, which is a thing that happens
+   * to a page rather than to you, and is much the more unsettling for it.
+   *
+   * Era III's alone, because nothing else in the game moves you. It carries no
+   * `hand` branch for the same reason the bell does not.
+   */
+  shove(): void {
+    this.tone({ dur: 0.09, type: 'triangle', f0: 380, f1: 720, gain: 0.1, attack: 0.006 });
+    this.burst({ dur: 0.07, type: 'bandpass', f0: 1400, f1: 3000, q: 1.6, gain: 0.05, attack: 0.012 });
+  }
+
   // --- Floor drone --------------------------------------------------------
 
   /** Two detuned saws under a low lowpass — felt more than heard. */
@@ -542,8 +662,9 @@ export class Sfx {
 
     for (const detune of [-7, 6]) {
       const o = ctx.createOscillator();
-      // A bowed pair under a manuscript; a motor under a machine.
-      o.type = this.hand === 'type' ? 'square' : 'sawtooth';
+      // A bowed pair under a manuscript, a motor under a machine, and a power
+      // supply under a screen.
+      o.type = this.droneType();
       o.detune.value = detune;
       o.frequency.value = this.droneHz(depth);
       o.connect(this.droneFilter);
@@ -570,12 +691,28 @@ export class Sfx {
    * `startDrone` — otherwise the floor under era II would keep the manuscript's
    * bowed pair for the whole run, which is the one sound you never stop hearing.
    */
+  /**
+   * A bowed pair, a motor, or a power supply.
+   *
+   * Era III's is a TRIANGLE, which is the quietest waveform here on purpose. A
+   * saw is a string being dragged and a square is a mechanism running; a screen
+   * is not doing any work you can hear, and the hum it has is not the sound of
+   * something happening — it is the sound of something being ON. Held tighter
+   * still by the filter below.
+   */
+  private droneType(): OscillatorType {
+    if (this.hand === 'raster') return 'triangle';
+    return this.hand === 'type' ? 'square' : 'sawtooth';
+  }
+
   setDroneHand(): void {
-    const type: OscillatorType = this.hand === 'type' ? 'square' : 'sawtooth';
+    const type = this.droneType();
     for (const o of this.droneOscs) o.type = type;
-    // A machine hums tighter than a bowed string sings.
+    // A machine hums tighter than a bowed string sings, and a screen tighter
+    // still — there is nothing moving in it at all.
     if (this.droneFilter) {
-      this.droneFilter.frequency.setTargetAtTime(this.hand === 'type' ? 180 : 260, this.t, 0.8);
+      const cut = this.hand === 'raster' ? 130 : this.hand === 'type' ? 180 : 260;
+      this.droneFilter.frequency.setTargetAtTime(cut, this.t, 0.8);
     }
   }
 
