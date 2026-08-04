@@ -598,9 +598,34 @@ export const WEAR_PRESSED = variant({
   wearCost: 8,
 });
 
+/**
+ * The flat fade. Kept as a DIAGNOSTIC, not a candidate — it is measurably worse
+ * than doing nothing, and the reason is the useful part.
+ *
+ * Measured with an ink-aware harness, so this is a fair test:
+ *
+ *                  reacting   thinking   pace d2/d5/d7
+ *   shipped            5.3       20.9      42/46/57
+ *   fade + spill       5.0       18.4      41/48/54
+ *   fade, no spill     3.1      109.8      15/22/28
+ *   wear + spill       6.0       22.3      30/33/41
+ *
+ * Beside the spill it costs depth at BOTH ends and its pace curve is
+ * indistinguishable from shipped: it buys nothing at all. In place of the spill
+ * it does terminate runs — the `no-clock` control stalls 131 of them, so that
+ * much was real work — but it ends them at depth 110 rather than 21.
+ *
+ * The flaw is that it charges for TIME, and time is what separates skill here: a
+ * reactive player spends 32-58 inputs a floor, a 3-ply one 12-21 at depth 20. So
+ * it taxes the slow player and is invisible to the fast one.
+ *
+ * WEAR is the same idea aimed correctly. It charges for RETRACING, and a player
+ * good enough to move purposefully genuinely is not juking, so the cost lands on
+ * the behaviour rather than on the clock.
+ */
 export const FADE = variant({
   id: 'fade',
-  label: 'X · Fade — ink runs out as you act, kills give it back',
+  label: 'X · Fade — diagnostic; charges for time, which only taxes slow play',
   fadeMax: 40,
 });
 export const FADE_ONLY = variant({
