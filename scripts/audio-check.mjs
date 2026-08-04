@@ -72,6 +72,7 @@ const report = await page.evaluate(async () => {
     { t: 'eattack', phase: 'e', id: 4, kind: 'warden', from: { x: 1, y: 1 }, at: { x: 2, y: 1 }, dmg: 6, exposed: true, hpAfter: 1 },
     { t: 'pickup', phase: 'p', pos: { x: 3, y: 3 }, kind: 'vial', amount: 3 },
     { t: 'pickup', phase: 'p', pos: { x: 3, y: 3 }, kind: 'nib', amount: 1 },
+    { t: 'shove', phase: 'e', id: 7, kind: 'cursor', from: { x: 1, y: 1 }, to: { x: 2, y: 1 }, dir: 'right' },
     { t: 'spill', phase: 'e', pos: { x: 0, y: 4 }, kind: 'rat' },
     { t: 'bell', phase: 'e', pos: { x: 2, y: 2 }, width: 3 },
     { t: 'drown', phase: 'e', pos: { x: 2, y: 2 }, dmg: 1, hpAfter: 3 },
@@ -91,7 +92,7 @@ const report = await page.evaluate(async () => {
    * Descending into the era first is what sets `sfx.hand`, so this drives the
    * real wiring rather than poking the synth.
    */
-  for (const [era, depth] of [['manuscript', 1], ['typewriter', 5]]) {
+  for (const [era, depth] of [['manuscript', 1], ['typewriter', 5], ['wordprocessor', 9]]) {
     rt['fire']({ t: 'descend', phase: 'p', depth });
     for (const ev of events) {
       const label = `${era}/${ev.t}${ev.exposed ? ':exposed' : ev.killed ? ':kill' : ''}${

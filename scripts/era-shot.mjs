@@ -27,11 +27,11 @@ await page.goto(base, { waitUntil: 'networkidle' });
 await page.click('.btn');
 await page.waitForTimeout(400);
 
-for (const [name, depth] of [['manuscript', 3], ['typewriter', 6], ['boss', 8], ['opening', 5]]) {
+for (const [name, depth] of [['manuscript', 3], ['typewriter', 6], ['boss', 8], ['wordprocessor', 10], ['boss3', 12], ['opening', 5]]) {
   await page.evaluate((d) => {
     const rt = window.__stet;
     const mk = (id, kind, x, y, ready) => ({ id, kind, pos: { x, y }, hp: 3, maxHp: 5, ready, struck: false, poise: true, intent: { kind: 'hold', path: [] }, seed: id * 17 + 3 });
-    const boss = d === 8;
+    const boss = d === 8 || d === 12;
     if (d === 5) {
       /*
        * A REAL descent from the last floor of era I into the first of era II.
@@ -58,10 +58,18 @@ for (const [name, depth] of [['manuscript', 3], ['typewriter', 6], ['boss', 8], 
       items: boss ? [] : [{ id: 900, kind: 'gesso', pos: { x: 4, y: 0 }, seed: 5 }],
       player: { ...rt.state.player, pos: { x: 2, y: 2 }, hp: 5, maxHp: 7, ward: 1 },
       enemies: boss
-        ? [mk(200, 'carriageReturn', 4, 1, true)]
-        : [mk(101, 'warden', 3, 1, true), mk(102, 'stalker', 0, 1, true), mk(103, 'carriage', 0, 4, true), mk(104, 'typebar', 1, 0, true)] };
+        ? [mk(200, d === 12 ? 'selectAll' : 'carriageReturn', 4, 1, true)]
+        : d >= 9
+          ? [mk(101, 'warden', 3, 1, true), mk(102, 'stalker', 0, 1, true), mk(105, 'selection', 0, 4, true), mk(106, 'autocomplete', 1, 0, true), mk(107, 'cursor', 4, 3, true)]
+          : [mk(101, 'warden', 3, 1, true), mk(102, 'stalker', 0, 1, true), mk(103, 'carriage', 0, 4, true), mk(104, 'typebar', 1, 0, true)] };
     rt.clock = 1e9;
     rt.input(boss ? 'left' : 'wait');
+    // Era III's SELECTION needs a second beat to open its mark out into the
+    // block, and the block is the whole point of the picture.
+    if (!boss && d >= 9) {
+      rt.clock = 1e9;
+      rt.input('wait');
+    }
   }, depth);
   await page.waitForTimeout(name === 'opening' ? 260 : 1100);
   await page.screenshot({ path: join(OUT, `era-${name}.png`) });

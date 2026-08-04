@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { makeSearchBrain, playRun } from './bots';
 import { chooseTrait, newGame, step } from './engine';
-import { ENEMY_ORDER, ENEMY_STATS, pageAt, ringsBell } from './enemies';
+import { ENEMY_ORDER, ENEMY_STATS, documentOrder, dragAt, pageAt, ringsBell } from './enemies';
+import { underThreat } from './preview';
 import {
   ERAS,
   ERA_FLOORS,
@@ -14,7 +15,7 @@ import {
 import { SIZE } from './grid';
 import { themeFor } from '../render/theme';
 import { SHIPPED } from './rules';
-import type { Dir, GameState } from './types';
+import type { Dir, EnemyKind, GameState, Vec } from './types';
 
 /** Walk a fresh run down to `depth`, taking the first card on every hand. */
 function descendTo(depth: number, seed = 3): GameState {
@@ -117,16 +118,31 @@ describe('eras and the floors that end them', () => {
   });
 
   it('draws its own chaff when the page fills', () => {
-    // Era II's spill must not reach for the manuscript's vermin.
-    expect(ERAS[0].chaff).toBe('rat');
-    expect(ERAS[1].chaff).toBe('semicolon');
+    // Era II's spill must not reach for the manuscript's vermin, and era III's
+    // must not reach for the typewriter's.
+    expect(ERAS.map((e) => e.chaff)).toEqual(['rat', 'semicolon', 'cursor']);
   });
 
   it('gives each era a roster the previous one did not have', () => {
-    const first = new Set(ERAS[0].roster);
-    const second = new Set(ERAS[1].roster);
-    expect([...second].some((k) => !first.has(k))).toBe(true);
-    expect([...first].some((k) => !second.has(k))).toBe(true);
+    for (let i = 1; i < ERAS.length; i++) {
+      const before = new Set(ERAS[i - 1].roster);
+      const after = new Set(ERAS[i].roster);
+      expect([...after].some((k) => !before.has(k))).toBe(true);
+      expect([...before].some((k) => !after.has(k))).toBe(true);
+    }
+  });
+
+  /**
+   * The ladder, stated as a test: every era makes its marks with a different
+   * instrument, and no two share one. A reskin would fail here first.
+   */
+  it('gives each era its own hand', () => {
+    const hands = ERAS.map((e) => e.hand);
+    expect(hands).toEqual(['brush', 'type', 'raster']);
+    expect(new Set(hands).size).toBe(hands.length);
+    expect(eraAt(ERA_FLOORS * 2 + 1).hand).toBe('raster');
+    // Depth 8 is still the typewriter's boss floor, not the word processor.
+    expect(eraAt(ERA_FLOORS * 2).hand).toBe('type');
   });
 
   /*
@@ -356,6 +372,335 @@ describe('eras and the floors that end them', () => {
       }
       expect(s.screen).toBe('dead');
       expect(turns).toBeLessThan(200);
+    });
+  });
+
+  /**
+   * ERA III · THE WORD PROCESSOR.
+   *
+   * Tiles, then lines, then AREAS — and an area is the first threat in the game
+   * that one step cannot answer. These are the tests of that claim.
+   */
+  describe('the word processor', () => {
+    /**
+     * A board with one thing on it, well clear of the player.
+     *
+     * Holds are unlimited here and nowhere else. The shipped rules allow two a
+     * floor, which is right for the game and useless for watching a three-beat
+     * telegraph play out — the alternative is pacing back and forth, and that
+     * changes `facing`, which is the one piece of state an AUTOCOMPLETE reads.
+     */
+    const withOne = (kind: EnemyKind, at: Vec, player: Vec = { x: 2, y: 2 }): GameState => {
+      const s = newGame(41, SHIPPED);
+      return {
+        ...s,
+        depth: 9,
+        grace: 999,
+        rules: { ...s.rules, waitsPerFloor: 0 },
+        blots: [],
+        items: [],
+        stairs: { x: 4, y: 4 },
+        player: { ...s.player, pos: { ...player }, hp: 9, maxHp: 9, facing: 'right' },
+        enemies: [
+          {
+            id: 1,
+            kind,
+            pos: { ...at },
+            hp: 9,
+            maxHp: 9,
+            ready: false,
+            struck: false,
+            poise: true,
+            intent: { kind: 'hold', path: [] },
+            seed: 7,
+          },
+        ],
+      };
+    };
+
+    const intentOf = (s: GameState) => s.enemies[0].intent;
+
+    describe('the selection', () => {
+      /*
+       * Three beats, and the shape has to be on the page before the blow is.
+       * Two beats was measured and thrown out — see `selectionPlan` — because one
+       * move is not enough to leave a three-by-three on a board with anything
+       * else on it.
+       */
+      it('marks, opens out, and only then deletes', () => {
+        let s = withOne('selection', { x: 0, y: 0 });
+        s = step(s, 'wait').state;
+        const mark = intentOf(s);
+        expect(mark).toMatchObject({ kind: 'select', release: false });
+        expect(mark.kind === 'select' && mark.tiles).toHaveLength(1);
+        expect(mark.kind === 'select' && mark.tiles[0]).toEqual({ x: 2, y: 2 });
+
+        s = step(s, 'wait').state;
+        const block = intentOf(s);
+        expect(block).toMatchObject({ kind: 'select', release: false });
+        // Three by three around the mark, and the mark was mid-board.
+        expect(block.kind === 'select' && block.tiles).toHaveLength(9);
+
+        s = step(s, 'wait').state;
+        const fired = intentOf(s);
+        expect(fired).toMatchObject({ kind: 'select', release: true });
+        // The tiles do not change between the last two beats: the promise kept
+        // has to be the promise made.
+        expect(fired.kind === 'select' && fired.tiles).toEqual(
+          block.kind === 'select' ? block.tiles : [],
+        );
+      });
+
+      it('threatens nothing while it is only being drawn', () => {
+        let s = withOne('selection', { x: 0, y: 0 });
+        s = step(s, 'wait').state; // mark, on the player's own tile
+        expect(underThreat(s)).toBe(false);
+        s = step(s, 'wait').state; // the block, covering the player
+        expect(underThreat(s)).toBe(false);
+        s = step(s, 'wait').state; // committed
+        expect(underThreat(s)).toBe(true);
+      });
+
+      it('takes what is inside it, and nothing outside', () => {
+        // Four turns: the mark is planned on the first and the blow lands on the
+        // fourth, because an intent is always executed the turn AFTER it is
+        // committed to. The two turns in between are the warning.
+        let s = withOne('selection', { x: 0, y: 4 });
+        for (let i = 0; i < 4; i++) s = step(s, 'wait').state;
+        expect(s.player.hp).toBe(7);
+
+        // The same fight, walked out of. Two moves is exactly enough to get
+        // clear of a three-by-three, which is the whole reason there are three
+        // beats rather than two.
+        let out = withOne('selection', { x: 0, y: 4 });
+        out = step(out, 'wait').state; // marks (2,2)
+        out = step(out, 'right').state; // (3,2) — still inside
+        out = step(out, 'right').state; // (4,2) — clear
+        out = step(out, 'wait').state; // the block is deleted behind you
+        expect(out.player.hp).toBe(9);
+      });
+
+      it('loses the drag when its stance is broken', () => {
+        // Stood square-on so a stroke is available on demand.
+        let s = withOne('selection', { x: 3, y: 2 });
+        s = { ...s, enemies: [{ ...s.enemies[0], hp: 9 }], player: { ...s.player, dmg: 4 } };
+        s = step(s, 'wait').state; // marks
+        const mark = intentOf(s);
+        expect(mark.kind === 'select' ? mark.tiles : []).toHaveLength(1);
+        s = step(s, 'right').state; // a heavy stroke: the stance goes
+        // Back to a mark rather than on to the block. A stroke buys two turns
+        // here, not one.
+        const after = intentOf(s);
+        expect(after).toMatchObject({ kind: 'select', release: false });
+        expect(after.kind === 'select' && after.tiles).toHaveLength(1);
+      });
+    });
+
+    describe('the autocomplete', () => {
+      it('strikes the two tiles ahead of your last step', () => {
+        let s = withOne('autocomplete', { x: 0, y: 0 }, { x: 1, y: 2 });
+        s = step(s, 'right').state; // now at (2,2), facing right
+        const i = intentOf(s);
+        expect(i.kind).toBe('sweep');
+        expect(i.kind === 'sweep' && i.tiles).toEqual([
+          { x: 3, y: 2 },
+          { x: 4, y: 2 },
+        ]);
+      });
+
+      it('is answered by changing your mind, and by nothing else', () => {
+        // Carry straight on and it lands.
+        let straight = withOne('autocomplete', { x: 0, y: 0 }, { x: 1, y: 2 });
+        straight = step(straight, 'right').state; // (2,2), aims at (3,2) and (4,2)
+        straight = step(straight, 'right').state; // (3,2) — into it
+        expect(straight.player.hp).toBe(8);
+
+        // Turn instead, and the same telegraph misses entirely.
+        let turned = withOne('autocomplete', { x: 0, y: 0 }, { x: 1, y: 2 });
+        turned = step(turned, 'right').state;
+        turned = step(turned, 'down').state; // (2,3)
+        expect(turned.player.hp).toBe(9);
+      });
+
+      it('comes up short against the edge of the page', () => {
+        let s = withOne('autocomplete', { x: 0, y: 0 }, { x: 3, y: 2 });
+        s = step(s, 'right').state; // (4,2), facing right: nothing ahead at all
+        const i = intentOf(s);
+        expect(i.kind === 'sweep' && i.tiles).toHaveLength(0);
+      });
+    });
+
+    describe('the cursor', () => {
+      /** A cursor square-on and committed to the player's tile. */
+      const committed = (player: Vec, from: Vec): GameState => {
+        const s = withOne('cursor', from, player);
+        return {
+          ...s,
+          enemies: [{ ...s.enemies[0], hp: 1, maxHp: 1, intent: { kind: 'move', path: [{ ...player }] } }],
+        };
+      };
+
+      it('pushes you one tile further along the line it struck', () => {
+        const r = step(committed({ x: 2, y: 2 }, { x: 1, y: 2 }), 'wait');
+        expect(r.state.player.hp).toBe(8);
+        expect(r.state.player.pos).toEqual({ x: 3, y: 2 });
+        expect(r.events.some((e) => e.t === 'shove')).toBe(true);
+      });
+
+      it('moves nothing when there is nowhere to insert', () => {
+        // Backed against the edge of the page: the blow lands, you stay put.
+        const r = step(committed({ x: 4, y: 2 }, { x: 3, y: 2 }), 'wait');
+        expect(r.state.player.hp).toBe(8);
+        expect(r.state.player.pos).toEqual({ x: 4, y: 2 });
+        expect(r.events.some((e) => e.t === 'shove')).toBe(false);
+      });
+
+      it('never inserts onto anything the page is already using', () => {
+        const base = committed({ x: 2, y: 2 }, { x: 1, y: 2 });
+        const blocked: GameState[] = [
+          { ...base, blots: [{ x: 3, y: 2 }] },
+          { ...base, items: [{ id: 9, kind: 'gesso', pos: { x: 3, y: 2 }, seed: 1 }] },
+          { ...base, stairs: { x: 3, y: 2 } },
+          {
+            ...base,
+            enemies: [...base.enemies, { ...base.enemies[0], id: 2, pos: { x: 3, y: 2 }, intent: { kind: 'hold', path: [] } }],
+          },
+        ];
+        for (const s of blocked) {
+          const r = step(s, 'wait');
+          expect(r.state.player.pos).toEqual({ x: 2, y: 2 });
+        }
+      });
+
+      /*
+       * The fairness rule the ordering exists for. A push can put you inside a
+       * block that has not gone off yet — frightening, readable, and dodgeable
+       * next turn — and never into one that already has, which nothing on the
+       * board could have warned you about.
+       */
+      it('cannot push you into a blow that has already landed', () => {
+        // Both committed, in the same turn: a selection about to delete the
+        // block around (3,2), and a cursor about to strike (1,2) from the left —
+        // which pushes the player to (2,2), inside that block.
+        const base = withOne('cursor', { x: 0, y: 2 }, { x: 1, y: 2 });
+        const block: Vec[] = [];
+        for (let y = 1; y <= 3; y++) for (let x = 2; x <= 4; x++) block.push({ x, y });
+        const s: GameState = {
+          ...base,
+          enemies: [
+            // The cursor FIRST in the array, so this proves the enemy phase is
+            // reordered rather than merely lucky.
+            { ...base.enemies[0], hp: 1, maxHp: 1, intent: { kind: 'move', path: [{ x: 1, y: 2 }] } },
+            {
+              id: 2,
+              kind: 'selection',
+              pos: { x: 0, y: 0 },
+              hp: 3,
+              maxHp: 3,
+              ready: false,
+              struck: false,
+              poise: true,
+              intent: { kind: 'select', path: [], tiles: block, release: true },
+              seed: 3,
+            },
+          ],
+        };
+
+        const r = step(s, 'wait');
+        // Pushed into the block, and unhurt by it: the page was deleted before
+        // anything moved you into it.
+        expect(r.state.player.pos).toEqual({ x: 2, y: 2 });
+        expect(r.state.player.hp).toBe(8); // the cursor's one damage, and only that
+      });
+    });
+
+    describe('the select all', () => {
+      it('waits on the last floor of era III', () => {
+        const s = descendTo(ERA_FLOORS * 3);
+        expect(s.depth).toBe(ERA_FLOORS * 3);
+        expect(s.enemies).toHaveLength(1);
+        expect(s.enemies[0].kind).toBe('selectAll');
+      });
+
+      it('takes the page in reading order, and more of it every pass', () => {
+        // Within a pass the count only grows, and it resets when it releases.
+        let last = 0;
+        let releases = 0;
+        for (let t = 0; t < 12; t++) {
+          const d = dragAt(t);
+          if (d.pass === 0) {
+            expect(d.count).toBeGreaterThan(last);
+            last = d.count;
+          }
+          if (d.releasing) releases++;
+        }
+        expect(releases).toBeGreaterThan(0);
+        // Reading order starts at a corner and rotates, so no single tile ever
+        // solves the fight.
+        expect(documentOrder(0)[0]).toEqual({ x: 0, y: 0 });
+        expect(documentOrder(1)[0]).toEqual({ x: SIZE - 1, y: 0 });
+        expect(documentOrder(2)[0]).toEqual({ x: 0, y: SIZE - 1 });
+        for (const pass of [0, 1, 2, 3]) expect(documentOrder(pass)).toHaveLength(SIZE * SIZE);
+      });
+
+      /*
+       * The whole promise, checked as a property: until the deadline there is
+       * always somewhere to stand. Era II's boss had to be redesigned into a
+       * shelter for exactly this reason — a boss with no dodge is a stat check.
+       */
+      it('always leaves somewhere to stand, right up to the deadline', () => {
+        for (let t = 0; t < 18; t++) {
+          const { count, releasing } = dragAt(t);
+          if (!releasing) continue;
+          expect({ t, clear: SIZE * SIZE - count }).toMatchObject({ t });
+          expect(count).toBeLessThan(SIZE * SIZE);
+        }
+      });
+
+      it('runs out of paper, which is what makes the fight end', () => {
+        // The clear ground closes by one row a pass, so eventually the drag
+        // takes everything and there is nowhere at all.
+        const ends = Array.from({ length: 60 }, (_, t) => dragAt(t)).find(
+          (d) => d.releasing && d.count === SIZE * SIZE,
+        );
+        expect(ends).toBeTruthy();
+      });
+
+      it('keeps taking the page even while it is being interrupted', () => {
+        let s = descendTo(ERA_FLOORS * 3);
+        const boss = s.enemies[0];
+        const beside = boss.pos.x > 0 ? { x: boss.pos.x - 1, y: boss.pos.y } : { x: 1, y: boss.pos.y };
+        s = { ...s, player: { ...s.player, pos: beside, hp: 99, maxHp: 99, dmg: 1 } };
+
+        const dirs: Dir[] = ['left', 'right', 'up', 'down'];
+        const passAtStart = dragAt(s.floorTurns).pass;
+        let struck = 0;
+
+        for (let i = 0; i < SIZE * 4 && s.screen === 'playing'; i++) {
+          if (!s.enemies[0]) break;
+          const tried = dirs.map((d) => ({ d, r: step(s, d) })).filter((x) => x.r.spent);
+          if (tried.length === 0) break;
+          const hit = tried.find((x) => x.r.events.some((ev) => ev.t === 'bump'));
+          if (hit) struck++;
+          s = (hit ?? tried[0]).r.state;
+          const alive = s.enemies[0];
+          if (alive) s = { ...s, enemies: [{ ...alive, hp: alive.maxHp }] };
+        }
+
+        expect(struck).toBeGreaterThan(0); // it really was being interrupted
+        expect(dragAt(s.floorTurns).pass).toBeGreaterThan(passAtStart);
+      });
+
+      it('ends on its own, against a player who only runs away', () => {
+        let s = descendTo(ERA_FLOORS * 3);
+        let turns = 0;
+        for (; turns < 200 && s.screen === 'playing'; turns++) {
+          const r = step(s, (['up', 'down', 'left', 'right'] as Dir[])[turns % 4]);
+          if (r.spent) s = r.state;
+        }
+        expect(s.screen).toBe('dead');
+        expect(turns).toBeLessThan(200);
+      });
     });
   });
 
