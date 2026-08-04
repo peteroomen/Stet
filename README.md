@@ -228,7 +228,11 @@ physical misregistration, era III has neither.
 | Boss | THE DROLLERY | THE CARRIAGE RETURN | — |
 | Threatens | tiles | **lines** | — |
 
-**I and II are built.** III still needs a mark-making system of its own — that is
+**I and II are built.** See [`docs/next-era.md`](docs/next-era.md) for the
+handoff: what an era is made of now, the unresolved three-eras-or-four question,
+and the list of things the harness overturned while era II was being built.
+
+III still needs a mark-making system of its own — that is
 the bulk of that work, and it wants a render grid rather than a live board, the
 same way the brush numbers were chosen (`npm run shots:type`). Past depth 8 the
 descent repeats the typewriter; the threat budget and the marginalia still
