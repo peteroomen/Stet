@@ -441,6 +441,107 @@ describe('the typebar — a line, not a tile', () => {
 
 
 /**
+ * The other half of era II's pair. A TYPEBAR reaches without moving and strikes
+ * your column; a CARRIAGE walks and strikes its own row. They are answered by
+ * opposite steps, which is the whole reason both exist.
+ */
+describe('the carriage — a line that walks', () => {
+  /** A carriage at `pos`, on whichever beat `ready` names. */
+  function car(pos: Vec, ready: boolean, over: Partial<GameState> = {}): GameState {
+    const e = makeEnemy(1, 'carriage', pos, 0);
+    e.ready = ready;
+    return replan(board({ enemies: [e], ...over }));
+  }
+
+  it('alternates stepping and sweeping, forever', () => {
+    let s = car(at(4, 4), false);
+    const beats: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      // Shuttle across the top, well clear, so nothing else interferes.
+      s = { ...s, player: { ...s.player, pos: at(i % 2 === 0 ? 0 : 1, 0) } };
+      s = step(s, i % 2 === 0 ? 'right' : 'left').state;
+      beats.push(s.enemies[0].intent.kind);
+    }
+    // Never two sweeps in a row: a line that walks must walk between lines.
+    expect(beats.every((k, i) => i === 0 || !(k === 'sweep' && beats[i - 1] === 'sweep'))).toBe(true);
+    expect(beats).toContain('sweep');
+    expect(beats).toContain('move');
+  });
+
+  it('sweeps its OWN row, not the one you are standing in', () => {
+    const s = car(at(4, 4), true); // player is at 2,2 — a different row entirely
+    const intent = s.enemies[0].intent;
+    expect(intent.kind).toBe('sweep');
+    if (intent.kind !== 'sweep') throw new Error('unreachable');
+    expect(intent.tiles.every((t) => t.y === 4)).toBe(true);
+    expect(intent.tiles.map((t) => t.x)).toEqual([0, 1, 2, 3]); // its own tile excluded
+  });
+
+  /*
+   * The fix the harness demanded. A chase that only shortens the distance parks
+   * it in your COLUMN as often as your row, and a row sweep from your column
+   * misses entirely — measured at less than half the typebar's damage for the
+   * same time on the board.
+   */
+  it('closes by getting level with you, not merely nearer', () => {
+    // Two rows below and two columns across. Stepping up is worth more than
+    // stepping across, even though both shorten the distance equally.
+    const s = car(at(4, 4), false);
+    const intent = s.enemies[0].intent;
+    expect(intent.kind).toBe('move');
+    if (intent.kind !== 'move') throw new Error('unreachable');
+    expect(intent.path[0].y).toBe(3); // levelled up a row
+    expect(intent.path[0].x).toBe(4); // and did not bother closing across
+  });
+
+  it('is dodged by leaving the row, and not by moving along it', () => {
+    // Level with the player, about to sweep row two.
+    const along = step(car(at(4, 2), true), 'left');
+    expect(along.state.player.hp).toBe(6 - ENEMY_STATS.carriage.dmg);
+
+    const away = step(car(at(4, 2), true), 'up');
+    expect(away.state.player.hp).toBe(6);
+  });
+
+  /*
+   * Breaking a carriage costs it the beat, exactly as breaking a CHARGER costs
+   * it the wind-up: it has to close again before it can sweep. Poise 2, so a
+   * bare stroke will not do it — the ladder has to carry one.
+   */
+  it('loses its beat when its stance is broken', () => {
+    const s = car(at(3, 2), true, {
+      player: { ...board().player, pos: at(2, 2), dmg: 2 },
+    });
+    const r = step(s, 'right');
+    expect(r.state.player.hp).toBe(6);
+    expect(r.events.some((e) => e.t === 'stagger' && e.interrupted)).toBe(true);
+    expect(r.state.enemies[0].ready).toBe(false); // must close again
+  });
+
+  it('shrugs off a stroke too light to break it, and sweeps anyway', () => {
+    const s = car(at(3, 2), true); // player dmg 1, poise 2
+    const r = step(s, 'right');
+    expect(r.state.player.hp).toBeLessThan(6);
+  });
+
+  /*
+   * A carriage boxed against the edge still reaches its second beat. Without
+   * this it would blunt itself on a wall and quietly stop being a threat.
+   */
+  it('reaches the sweep even when its step is blocked', () => {
+    // Pinned in the corner by a blot, with the player level and adjacent so
+    // there is nowhere improving to go.
+    const s = car(at(0, 0), false, {
+      blots: [at(1, 0), at(0, 1)],
+      player: { ...board().player, pos: at(2, 0) },
+    });
+    const r = step(s, 'up'); // blocked at the top row: a wall costs nothing
+    const after = r.spent ? r.state : step(s, 'down').state;
+    expect(after.enemies[0].ready).toBe(true);
+  });
+});
+
+/**
  * Reach and breadth, and the one rule they are both built around: only the foe
  * you AIMED at can be interrupted. Interrupting is the game's defensive move and
  * it has always been one a turn — a card that broke four stances at once would

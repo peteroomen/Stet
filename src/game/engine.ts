@@ -1,4 +1,11 @@
-import { ENEMY_STATS, intentThreatens, makeEnemy, planIntent, spawnsOnWind } from './enemies';
+import {
+  ENEMY_STATS,
+  intentThreatens,
+  makeEnemy,
+  planIntent,
+  spawnsOnWind,
+  strides,
+} from './enemies';
 import { eraAt, isAfterBoss, isBossFloor } from './eras';
 import { MAX_ENEMIES, generateFloor } from './floors';
 import { DIR_VEC, ORTHO, add, allTiles, chebyshev, eq, inBounds } from './grid';
@@ -364,7 +371,10 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
     // loses its wind-up and must start again, so interrupting a CHARGER mid-coil
     // is worth far more than interrupting a RAT.
     e.poise = false;
-    if (st.slow) e.ready = false;
+    // A broken stance costs a slow unit its wind-up, and costs a STRIDER its
+    // beat: it has to close again before it can sweep. Interrupting a carriage
+    // mid-row is worth the same as interrupting a charger mid-coil.
+    if (st.slow || strides(e.kind)) e.ready = false;
     ev.push({
       t: 'stagger',
       phase: 'e',
@@ -409,11 +419,24 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
     if (intent.tiles.some((v) => eq(v, d.player.pos))) {
       strike(e, d, e.pos, d.player.pos, ev);
     }
-    if (st.slow) e.ready = false;
+    if (st.slow || strides(e.kind)) e.ready = false;
     return;
   }
 
-  if (intent.kind === 'hold' || intent.path.length === 0) return;
+  if (intent.kind === 'hold' || intent.path.length === 0) {
+    /*
+     * A STRIDER still earns its beat by standing there.
+     *
+     * `carriageStep` returns HOLD when nothing improves its line, which happens
+     * whenever it is already level with you or boxed against an edge — and both
+     * of those are exactly when it ought to be about to sweep. Falling through
+     * the early return left it permanently on the step beat, so a carriage
+     * pinned in a corner blunted itself on the wall and quietly stopped being a
+     * threat. Caught by a test written from the comment claiming otherwise.
+     */
+    if (strides(e.kind)) e.ready = true;
+    return;
+  }
 
   const from: Vec = { ...e.pos };
   let cur: Vec = { ...e.pos };
@@ -437,6 +460,16 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
     ev.push({ t: 'emove', phase: 'e', id: e.id, kind: e.kind, from, to: { ...cur } });
   }
   if (st.slow) e.ready = false;
+  /*
+   * A STRIDER has finished closing, so the next beat is the sweep — and it is
+   * telegraphed from the tile it just arrived on, which is the whole reason this
+   * flips here rather than at planning time. You watch it step into your row and
+   * then you have one turn to leave.
+   *
+   * Set even when the step was blocked. Otherwise a carriage boxed against a wall
+   * or a blot never reaches its own second beat and quietly stops being a threat.
+   */
+  else if (strides(e.kind)) e.ready = true;
 }
 
 /**

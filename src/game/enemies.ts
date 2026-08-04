@@ -107,6 +107,51 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
     tell: 'Never moves. Strikes the column you stand in, a turn later. Step sideways.',
   },
   /*
+   * THE CARRIAGE — the line that walks.
+   *
+   * A TYPEBAR reaches: it never moves, and it strikes the column you are in. A
+   * CARRIAGE is the other half of the machine, so it does the other thing — it
+   * carries the paper to where it will be struck. It STEPS toward you on one
+   * turn and sweeps the whole ROW it is standing in on the next, forever
+   * alternating.
+   *
+   * That gives era II a matched pair on both axes. The typebar is answered by a
+   * step sideways, the carriage by a step up or down, and they are told apart at
+   * a glance by the one thing that matters: whether the threat comes to you or
+   * you have to be somewhere when it arrives.
+   *
+   * It is not the typebar with legs, and the difference is the reason the
+   * typebar's first design failed. A stationary sweeper can be walked away from
+   * forever, so it only ever cost turns; this one FOLLOWS. Leaving its row buys
+   * you exactly one beat, and then it is in your row again. It is also harder to
+   * silence — poise 2, so a bare stroke will not stop it, and three health
+   * rather than two.
+   *
+   * Two damage where the typebar has one, and it earns the difference by being
+   * slower to bring to bear: the typebar reaches your column from wherever it
+   * stands, while this has to walk into position first and can be broken on the
+   * way. Measured against a 3-ply bot, with the aligning chase in `carriageStep`,
+   * the two spend about the same time on the board (3861 tile-turns against
+   * 4109) and split the damage 15.5% to 23.9% — the typebar still the more
+   * dangerous of the pair, which is right for the one you cannot walk away from.
+   *
+   * Whole-run effect: 4 / 4 / 19 to 4 / 4 / 17, with the reactive floor
+   * unmoved. A gate on the ceiling, paid for at the top and nowhere else.
+   */
+  carriage: {
+    hp: 3,
+    dmg: 2,
+    poiseBreak: 2,
+    // Not `slow`: a slow unit alternates WIND and act, and a slow chaser would
+    // never take a step at all. This one alternates STEP and sweep — see
+    // `strides` below, which is what the engine reads instead.
+    slow: false,
+    cost: 4,
+    from: 6,
+    name: 'CARRIAGE',
+    tell: 'Steps toward you, then sweeps its whole row. Leave the row, or break it.',
+  },
+  /*
    * THE DROLLERY — the grotesque a scribe drew in the margin, and the first
    * boss.
    *
@@ -138,8 +183,23 @@ export const ENEMY_ORDER: EnemyKind[] = [
   'charger',
   'warden',
   'typebar',
+  'carriage',
   'drollery',
 ];
+
+/**
+ * Does this kind alternate STEPPING and STRIKING, rather than winding and acting?
+ *
+ * `slow` means "wind up, then act", which is what makes a heavy dodgeable — and
+ * it is wrong for a chaser that also strikes on a beat, because a slow unit does
+ * not move on its wind turn and would therefore never move at all. A strider
+ * spends one turn closing and the next striking, and `ready` alternates between
+ * the two instead of counting a wind-up.
+ *
+ * A predicate rather than a field, matching `spawnsOnWind`: one kind does this,
+ * and a boolean on every stat block to say "no" is noise.
+ */
+export const strides = (k: EnemyKind): boolean => k === 'carriage';
 
 /** Does this kind pull another body onto the board when it winds? */
 export const spawnsOnWind = (k: EnemyKind): boolean => k === 'drollery';
@@ -249,6 +309,55 @@ function chargerPlan(e: Enemy, s: GameState, _rng: Rng): Intent {
 }
 
 /**
+ * CARRIAGE: closes by LINING UP, not by getting nearer.
+ *
+ * A plain orthogonal chase is wrong for something that strikes a row, and the
+ * harness put a number on how wrong: measured against a 3-ply bot, the carriage
+ * and the typebar spent almost exactly the same time on the board (3952 against
+ * 3936 tile-turns) and the carriage did 9.5% of the damage to the typebar's 23%
+ * — less than half, while hitting twice as hard. The reason is geometry. A chase
+ * that only shortens the distance parks it in your COLUMN about as often as your
+ * row, and a row sweep from your column misses entirely.
+ *
+ * So it matches your row first and only then closes along it, which is both the
+ * fix and what the machine actually does: a carriage travels to put the paper
+ * where the strike will land. Being in front of it is not the danger; being
+ * level with it is.
+ */
+function carriageStep(e: Enemy, s: GameState, rng: Rng): Intent {
+  const goal = s.player.pos;
+  const cands = ORTHO.map((v) => add(e.pos, v)).filter((v) => passable(s, v, e.id));
+  if (cands.length === 0) return HOLD;
+
+  // Getting level is worth more than getting near, so rank on |dy| first and use
+  // distance only to break ties between two moves that align equally well.
+  const score = (v: Vec) => Math.abs(v.y - goal.y) * 100 + manhattan(v, goal);
+  const here = score(e.pos);
+  const best = Math.min(...cands.map(score));
+  if (best < here) return { kind: 'move', path: [rng.pick(cands.filter((v) => score(v) === best))] };
+
+  // Already as level and as close as it can get. Hold rather than shuffle: a
+  // carriage that danced sideways would leave the row it just took up.
+  return HOLD;
+}
+
+/**
+ * The whole of the row it is standing in, on the beat after it steps.
+ *
+ * Its OWN row, unlike the typebar's aim at yours — because it walks. A threat
+ * that both follows you and re-aims would leave no answer but killing it, and
+ * the whole contract here is that every telegraph has a dodge in it.
+ */
+function carriagePlan(e: Enemy): Intent {
+  const tiles: Vec[] = [];
+  for (let x = 0; x < SIZE; x++) {
+    if (x === e.pos.x) continue; // the carriage is what strikes, not what is struck
+    tiles.push({ x, y: e.pos.y });
+  }
+  return { kind: 'sweep', path: [], tiles };
+}
+
+/**
  * TYPEBAR: strikes the whole of the column you were standing in, one turn later.
  *
  * It aims at YOUR column, not at its own, and that is the whole design. The
@@ -317,6 +426,9 @@ export function planIntent(e: Enemy, s: GameState, rng: Rng): Intent {
       return chargerPlan(e, s, rng);
     case 'typebar':
       return typebarPlan(e, s);
+    // Steps on one beat, sweeps on the next. `ready` is the beat.
+    case 'carriage':
+      return e.ready ? carriagePlan(e) : carriageStep(e, s, rng);
   }
 }
 

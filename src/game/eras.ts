@@ -64,13 +64,15 @@ export const ERAS: Era[] = [
   /*
    * II · THE TYPEWRITER, depths 5–8.
    *
-   * Mechanically real, visually not yet: it is still drawn in the manuscript's
-   * hand, because the typed mark — hard edges, uniform weight, misregistration,
-   * ribbon fade — is a mark-making system of its own and wants a render grid
-   * rather than a live board (see scripts/brush-shots.mjs). Shipping the rules
-   * first is deliberate: what makes this a different PLACE is that its threats
-   * ask a different question, and that can be measured now, while the hand can
-   * only be judged by eye later.
+   * Struck rather than drawn, on ruled foolscap, in a bichrome ribbon — see
+   * `TYPEWRITER` in render/theme.ts for the page and `strikeStroke` for the mark.
+   * The four archetypes carry over redrawn in that hand; the era's own two are
+   * native to the machine and threaten the two things a machine threatens.
+   *
+   * THE TYPEBAR reaches without moving and strikes your COLUMN. THE CARRIAGE
+   * walks and strikes its own ROW. Between them era II asks a question era I
+   * never does — not "which tile is safe" but "which LINE am I on" — and they
+   * are answered by opposite steps, so learning one does not give you the other.
    *
    * The RAT is gone. Chaff belongs to the manuscript, and each era is supposed
    * to strip something away — though the spill still draws rats, which is the
@@ -79,7 +81,7 @@ export const ERAS: Era[] = [
   {
     id: 'typewriter',
     name: 'The Typewriter',
-    roster: ['stalker', 'charger', 'warden', 'typebar'],
+    roster: ['stalker', 'charger', 'warden', 'typebar', 'carriage'],
     boss: 'drollery',
     hand: 'type',
     palette: TYPEWRITER,

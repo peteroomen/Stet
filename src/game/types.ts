@@ -14,7 +14,14 @@ export type Dir = 'up' | 'down' | 'left' | 'right';
  */
 export type Action = Dir | 'wait';
 
-export type EnemyKind = 'rat' | 'stalker' | 'charger' | 'warden' | 'drollery' | 'typebar';
+export type EnemyKind =
+  | 'rat'
+  | 'stalker'
+  | 'charger'
+  | 'warden'
+  | 'drollery'
+  | 'typebar'
+  | 'carriage';
 export type ItemKind = 'vial' | 'nib' | 'gesso';
 
 /**

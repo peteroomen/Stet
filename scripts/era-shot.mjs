@@ -34,7 +34,7 @@ for (const [name, depth] of [['manuscript', 3], ['typewriter', 6]]) {
     rt.state = { ...rt.state, depth: d, blots: [{ x: 1, y: 3 }], stairsOpen: false,
       items: [{ id: 900, kind: 'gesso', pos: { x: 4, y: 0 }, seed: 5 }],
       player: { ...rt.state.player, pos: { x: 2, y: 2 }, hp: 5, maxHp: 7, ward: 1 },
-      enemies: [mk(101, 'warden', 3, 1, true), mk(102, 'stalker', 0, 1, true), mk(103, 'charger', 4, 4, false), mk(104, 'typebar', 1, 0, true)] };
+      enemies: [mk(101, 'warden', 3, 1, true), mk(102, 'stalker', 0, 1, true), mk(103, 'carriage', 0, 4, true), mk(104, 'typebar', 1, 0, true)] };
     rt.clock = 1e9;
     rt.input('wait');
   }, depth);

@@ -25,6 +25,7 @@ const DEFS: [string, GlyphDef][] = [
   ['charger', ENEMY_GLYPHS.charger],
   ['warden', ENEMY_GLYPHS.warden],
   ['typebar', ENEMY_GLYPHS.typebar],
+  ['carriage', ENEMY_GLYPHS.carriage],
   ['drollery', ENEMY_GLYPHS.drollery],
 ];
 

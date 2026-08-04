@@ -209,9 +209,11 @@ physical misregistration, era III has neither.
 | | I · The Manuscript | II · The Typewriter | III · The Terminal |
 |---|---|---|---|
 | Depths | 1–4 | 5–8 | 9–12 |
-| Surface | cream vellum, gilded | foolscap, faint blue rule | black, phosphor glow |
+| Surface | cream vellum, gilded | foolscap, blue rule, steel margin | black, phosphor glow |
 | Mark | loaded brush | struck typebar | raster glyph |
 | Ink | iron gall + gold | bichrome ribbon, black / red | green or amber |
+| Native kinds | — | TYPEBAR, CARRIAGE | — |
+| Threatens | tiles | **lines** | — |
 
 **I and II are built.** III still needs a mark-making system of its own — that is
 the bulk of that work, and it wants a render grid rather than a live board, the
@@ -312,6 +314,27 @@ stall the spill was built to prevent.
 | `◇` | **Stalker** | 2 | 1 | 1 | Closes on the diagonal, but must step square-on to strike. |
 | `»` | **Charger** | 3 | 2 | 2 | Winds up, then lunges two tiles. Sidestep it, or break the coil. |
 | `▥` | **Warden** | 5 | 3 | 3 | Shrugs off a light stroke. Only a heavy blow stops it. |
+| `⊥` | **Typebar** | 2 | 1 | 1 | Never moves. Strikes the column you stand in, a turn later. |
+| `▤` | **Carriage** | 3 | 2 | 2 | Steps toward you, then sweeps its whole row. |
+
+The first four are era I and carry into every era after it. The last two are era
+II's own, and they are the reason it is a different place: era I threatens
+**tiles**, so every dodge in it is a sidestep. A machine threatens **lines**.
+
+They are a matched pair on opposite axes and are answered by opposite steps —
+the typebar by moving sideways, the carriage by moving up or down — so learning
+one does not hand you the other. What tells them apart at a glance is whether the
+threat comes to you or you have to be somewhere when it arrives: the typebar
+reaches from wherever it stands and never moves, the carriage walks into your row
+and can be broken on the way.
+
+Both were rewritten by the harness. The typebar first struck the column *it* stood
+in and measured 0.0–0.4 damage a floor while adding ~25 turns to one — nothing
+forces you into a fixed column when there are four others, so everyone left and
+nobody was hit. The carriage first chased by plain distance, which parked it in
+your column as often as your row, and a row sweep from your column misses:
+measured at less than half the typebar's damage for the same time on the board.
+It aligns its row before it closes now, which is what a carriage does anyway.
 
 **Poise** is the damage a single stroke must carry to break that thing's stance.
 Chaff folds to anything; interrupting a WARDEN costs a combo you can only build

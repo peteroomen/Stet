@@ -181,6 +181,75 @@ export const ENEMY_GLYPHS: Record<EnemyKind, GlyphDef> = {
     ],
     weight: 1.05,
   },
+  /*
+   * THE CARRIAGE — the platen and its rails.
+   *
+   * Deliberately the exact opposite of the TYPEBAR: that one is the only
+   * vertical silhouette in the set and threatens a column, this is the widest
+   * horizontal one and threatens a row. The shape is the mechanic, and the pair
+   * is legible against each other before either is legible on its own.
+   *
+   * A long roller, two end flanges it runs between, and the rail under it.
+   */
+  carriage: {
+    paths: [
+      // The roller: a wide flat drum.
+      [
+        [-0.78, -0.4],
+        [0.78, -0.4],
+        [0.78, 0.12],
+        [-0.78, 0.12],
+        [-0.78, -0.4],
+      ],
+      // Its knurl, so the drum reads as something that turns.
+      [
+        [-0.4, -0.4],
+        [-0.4, 0.12],
+      ],
+      [
+        [0.4, -0.4],
+        [0.4, 0.12],
+      ],
+      // The rail it travels along.
+      [
+        [-0.92, 0.52],
+        [0.92, 0.52],
+      ],
+      // The flanges, standing on the rail at each end.
+      [
+        [-0.78, 0.12],
+        [-0.78, 0.52],
+      ],
+      [
+        [0.78, 0.12],
+        [0.78, 0.52],
+      ],
+    ],
+    // A brush merges the knurl into the drum, so the brushed carriage drops it
+    // and says the same thing with a wider gap between roller and rail.
+    brushPaths: [
+      [
+        [-0.76, -0.44],
+        [0.76, -0.44],
+        [0.76, 0.06],
+        [-0.76, 0.06],
+        [-0.76, -0.44],
+      ],
+      [
+        [-0.94, 0.56],
+        [0.94, 0.56],
+      ],
+      [
+        [-0.76, 0.06],
+        [-0.76, 0.56],
+      ],
+      [
+        [0.76, 0.06],
+        [0.76, 0.56],
+      ],
+    ],
+    weight: 1.1,
+  },
   stalker: {
     paths: [
       [
