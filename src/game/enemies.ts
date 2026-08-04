@@ -1,4 +1,15 @@
-import { DIAG, MAX_ENEMIES, ORTHO, SIZE, add, chebyshev, eq, inBounds, manhattan } from './grid';
+import {
+  DIAG,
+  DIR_VEC,
+  MAX_ENEMIES,
+  ORTHO,
+  SIZE,
+  add,
+  chebyshev,
+  eq,
+  inBounds,
+  manhattan,
+} from './grid';
 import type { Rng } from './rng';
 import type { Enemy, EnemyKind, GameState, Intent, Vec } from './types';
 
@@ -261,6 +272,160 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
     home: 'typewriter',
   },
   /*
+   * THE CURSOR — era III's chaff, and the first thing in the game that moves YOU.
+   *
+   * Every era's chaff is the same creature doing the same job: it walks onto you,
+   * it folds to one stroke, and ignoring it kills you. What changes is the shape
+   * of the moment it arrives in, because chaff is the most common thing on a
+   * board and therefore the thing that most decides where you feel you are.
+   *
+   * A word processor's answer is INSERTION. Where it lands, it does not merely
+   * mark the page — it pushes what was already there along the line, and what was
+   * already there is you. One damage, exactly like a RAT, and then one tile down
+   * the line you were struck along.
+   *
+   * That is a small thing on an empty board and a large one on a full page,
+   * which is the right shape for chaff in an era whose real threats are areas:
+   * the cursor cannot kill you, but it can put you inside a SELECTION. Nothing
+   * moves if there is nowhere to insert — see `openPage` in engine.ts.
+   */
+  cursor: {
+    hp: 1,
+    dmg: 1,
+    poiseBreak: 1,
+    slow: false,
+    cost: 1,
+    from: 9,
+    name: 'CURSOR',
+    tell: 'Steps onto you, and its blow pushes you one tile further along.',
+    home: 'wordprocessor',
+  },
+  /*
+   * THE SELECTION — the era's verb, and the reason era III is a place.
+   *
+   * It never moves and it never chases. It MARKS the tile you are standing on,
+   * and on the next beat the paragraph around that mark — three by three — is
+   * deleted. Then it marks wherever you are now, and does it again.
+   *
+   * ## Why the mark and the blow are two turns
+   *
+   * Era I threatens tiles and era II threatens lines, and both are answered by
+   * ONE step: sideways out of a column, or off a row. An area cannot be answered
+   * by one step, and that is the point — from the middle of a three-by-three,
+   * one step still leaves you inside it. So the mark is a turn of warning that a
+   * line never needs, and the counterplay is not a dodge but a route: you have
+   * to have been leaving already. It taxes exactly the play the ceiling is made
+   * of, which is standing still to build a combo ladder.
+   *
+   * Deliberately anchored on where you WERE rather than on where you will be.
+   * A threat that both takes a turn to land and re-aims while it lands has no
+   * answer but killing it, and every telegraph in this game has a dodge in it.
+   *
+   * Breaking its stance loses the drag as well as the blow: it has to mark again
+   * before it can delete anything, exactly as interrupting a CARRIAGE costs it
+   * its row. See `selectionPlan`, which reads the drag off its own last intent
+   * rather than off a field on every enemy in the game.
+   */
+  selection: {
+    hp: 3,
+    dmg: 2,
+    poiseBreak: 2,
+    // Not `slow`: a slow unit spends its wind-up standing still and doing
+    // nothing, and this one's first beat is the mark — the telegraph IS the
+    // wind-up. The two beats live in the intent instead. See `selectionPlan`.
+    slow: false,
+    cost: 4,
+    from: 9,
+    name: 'SELECTION',
+    tell: 'Marks the tile you stand on, then deletes the block around it. Be two tiles away.',
+    home: 'wordprocessor',
+  },
+  /*
+   * THE AUTOCOMPLETE — it finishes what you started.
+   *
+   * Every other turn it strikes the two tiles ahead of you, in the direction you
+   * last moved. Not where you are: where you were GOING. It is the only thing in
+   * the game that reads your momentum, and the counterplay is the only one of
+   * its kind — do not carry on the way you were carrying on.
+   *
+   * It is the SELECTION's opposite half, and the pair is what makes era III a
+   * question rather than a place with new pictures. A selection says LEAVE, and
+   * the fastest way to leave anything is a straight line; this punishes exactly
+   * that line. Together they ask you to move and to keep changing your mind,
+   * which is a dance nothing in eras I or II asks for.
+   *
+   * A reacher, like the TYPEBAR, and for the same reason: something that
+   * anticipates you is not also something you can walk away from. One damage —
+   * its threat is POSITIONAL, and the era's boss and its selections need room to
+   * take their own bite out of the top.
+   *
+   * Not `slow`, and that is the one number the harness moved here. On alternate
+   * beats it did 3.8% of the era's damage and was simply background: a rule
+   * about how you may move is not a rule if it only applies half the time, which
+   * is the SEMICOLON's lesson restated. Acting every turn it does 10% and, more
+   * to the point, it means what it says — carrying straight on is always
+   * punished, and the answer is always available.
+   */
+  autocomplete: {
+    hp: 2,
+    dmg: 1,
+    poiseBreak: 1,
+    slow: false,
+    cost: 3,
+    from: 10,
+    name: 'AUTOCOMPLETE',
+    tell: 'Strikes the two tiles ahead of your last step. Turn, or stop.',
+    home: 'wordprocessor',
+  },
+  /*
+   * THE SELECT ALL — era III's boss, and the era's own verb at the scale of the
+   * whole document.
+   *
+   * It does not move and it does not chase. It DRAGS: every turn the selection
+   * grows a few tiles further through the page in reading order, and when it has
+   * taken all it means to take, everything inside it is deleted at once and the
+   * drag starts again from a different corner. Nothing is struck while the block
+   * is growing, so the early turns of a pass are yours to fight in — and the
+   * clear paper shrinks under you the whole time.
+   *
+   * ## Why it is a drag and not a band
+   *
+   * Era II's boss is a travelling LANE: one row safe, and the answer is to be on
+   * it. Restating that as an area would have been the same fight drawn square.
+   * This one asks the era's question instead — not "which line is safe" but
+   * "where will the block have got to, and can I still be outside it" — and the
+   * answer is a route across the page rather than a step onto a row.
+   *
+   * The corner rotates every pass, so the clear paper is at the foot of the page
+   * on one pass and at its head on the next. That is what stops a single good
+   * tile from solving the fight: era II's shelter converged on the machine, and
+   * this one makes you cross.
+   *
+   * ## It ends by arithmetic
+   *
+   * `dragAt` is read off `floorTurns` and nothing else, so interrupting the
+   * machine cancels the blow you were about to eat and does NOT stop the page
+   * being selected. A boss whose clock you can pause by hitting it is a boss you
+   * can stall forever — that is the failure the DROLLERY needed two extra rules
+   * to patch.
+   *
+   * Each pass keeps one row fewer and runs at twice the rate of the last, so by
+   * the sixth the drag takes the whole page and there is nowhere at all. That is
+   * about turn twenty-six, in the same country as the carriage return's
+   * twenty-five, and it is a deadline rather than a probability.
+   */
+  selectAll: {
+    hp: 12,
+    dmg: 2,
+    poiseBreak: 3,
+    slow: false,
+    cost: 99, // never bought from a threat budget; placed by the boss floor
+    from: 12,
+    name: 'SELECT ALL',
+    tell: 'Drags a selection through the page and deletes it. Be in the paper it has not reached.',
+    home: 'wordprocessor',
+  },
+  /*
    * THE DROLLERY — the grotesque a scribe drew in the margin, and the first
    * boss.
    *
@@ -295,8 +460,12 @@ export const ENEMY_ORDER: EnemyKind[] = [
   'typebar',
   'carriage',
   'semicolon',
+  'cursor',
+  'selection',
+  'autocomplete',
   'drollery',
   'carriageReturn',
+  'selectAll',
 ];
 
 /**
@@ -354,6 +523,69 @@ export function pageAt(floorTurns: number): { lane: number; shelter: number; tur
   };
 }
 
+/* -------------------------------------------------------------------------
+ * THE SELECT ALL's clock.
+ *
+ * Everything about the fight is a function of `floorTurns` and nothing else,
+ * exactly like `pageAt`. Hitting the machine cancels a blow; it never pauses the
+ * page.
+ * ---------------------------------------------------------------------- */
+
+/** How much clear paper a pass leaves behind: most of a row, then one less each time. */
+const dragKeeps = (pass: number): number => Math.max(0, SIZE - 1 - pass);
+
+/** Tiles taken per turn. Rising each pass is what turns the fight into a deadline. */
+const dragRate = (pass: number): number => 3 + pass * 2;
+
+/** How much of the page a pass takes before it deletes what it has. */
+const dragTarget = (pass: number): number => SIZE * SIZE - dragKeeps(pass);
+
+/**
+ * Where the drag has got to, on a given floor-turn.
+ *
+ * `count` is how many tiles of the page are selected IN READING ORDER from this
+ * pass's corner; `releasing` is true on the one turn of each pass when the block
+ * is deleted. Passes get shorter and take more, so the clear paper runs out by
+ * the sixth of them — around turn twenty-six, whatever anyone does.
+ */
+export function dragAt(floorTurns: number): { pass: number; count: number; releasing: boolean } {
+  let turn = Math.max(0, Math.floor(floorTurns));
+  for (let pass = 0; pass < 64; pass++) {
+    const rate = dragRate(pass);
+    const target = dragTarget(pass);
+    const span = Math.ceil(target / rate);
+    if (turn < span) {
+      const count = Math.min(target, rate * (turn + 1));
+      return { pass, count, releasing: count >= target };
+    }
+    turn -= span;
+  }
+  return { pass: 64, count: SIZE * SIZE, releasing: true };
+}
+
+/**
+ * The page in reading order, from the corner this pass starts at.
+ *
+ * The corner rotates every pass, which is the thing that stops one good tile
+ * from solving the fight. Era II's shelter converged on the machine; this one
+ * makes you cross the page to meet it.
+ */
+export function documentOrder(pass: number): Vec[] {
+  const flipX = pass % 2 === 1;
+  const flipY = pass % 4 >= 2;
+  const out: Vec[] = [];
+  for (let i = 0; i < SIZE; i++) {
+    const y = flipY ? SIZE - 1 - i : i;
+    for (let j = 0; j < SIZE; j++) {
+      out.push({ x: flipX ? SIZE - 1 - j : j, y });
+    }
+  }
+  return out;
+}
+
+/** True on the turn the drag lets go and the page it has taken is deleted. */
+export const releasesPage = (floorTurns: number): boolean => dragAt(floorTurns).releasing;
+
 /** True on the turn the carriage reaches a margin and starts back. */
 export const ringsBell = (floorTurns: number): boolean =>
   floorTurns > 0 && pageAt(floorTurns).turning && pageAt(floorTurns - 1).lane !== pageAt(floorTurns).lane;
@@ -374,6 +606,19 @@ export const strides = (k: EnemyKind): boolean => k === 'carriage';
 
 /** Does this kind pull another body onto the board when it winds? */
 export const spawnsOnWind = (k: EnemyKind): boolean => k === 'drollery';
+
+/**
+ * Does a blow from this kind MOVE you?
+ *
+ * Era III edits the page rather than merely marking it, and a CURSOR inserts:
+ * where it strikes, what was there is pushed one tile along. A predicate rather
+ * than a field, matching `strides` and `spawnsOnWind` — one kind does this, and
+ * a boolean on every stat block to say "no" is noise.
+ *
+ * The engine also runs displacers LAST in the enemy phase, so nothing can push
+ * you into a blow that has already landed. See `step`.
+ */
+export const displaces = (k: EnemyKind): boolean => k === 'cursor';
 
 /**
  * Can this enemy legally end a step on `v`?
@@ -605,6 +850,103 @@ function typebarPlan(e: Enemy, s: GameState): Intent {
   return { kind: 'sweep', path: [], tiles };
 }
 
+/**
+ * SELECTION: mark where you stand, open the block out, then delete it.
+ *
+ * The beats live in the intent rather than in a field on the enemy, and that is
+ * worth saying plainly: the drag IS the telegraph, so the thing that has to be
+ * remembered between turns is exactly the thing already being drawn. A one-tile
+ * select is a mark; a nine-tile one is the shape; a nine-tile one that has
+ * released is the blow.
+ *
+ * ## Three beats, not two, and the harness insisted
+ *
+ * It first went mark → delete, which gives you one move to get two tiles clear
+ * of the anchor. That is possible on an empty board and rarely possible on a
+ * real one, and it showed: measured over forty 3-ply runs past depth 9, this one
+ * kind did 54% of all the damage in the era on a sixth of the board-time of a
+ * WARDEN — about twelve times the damage per turn on the page of anything else
+ * in the game. Not a threat, a tax with a picture on it.
+ *
+ * The extra beat fixes both halves at once. It halves the rate, and it makes the
+ * dodge honest: two moves to leave a three-by-three is a route you can actually
+ * take. It also reads better, because the turn it buys is the turn the SHAPE is
+ * on the page — before, all you ever saw in advance was a dot.
+ *
+ * `e.poise` is false for precisely one plan — the one straight after a stance
+ * was broken — which is what makes an interrupt cost the drag as well as the
+ * blow. It has to start over from a fresh mark, so a stroke buys you two turns
+ * rather than one.
+ */
+function selectionPlan(e: Enemy, s: GameState): Intent {
+  const prev = e.intent;
+  const held = e.poise && prev.kind === 'select' && !prev.release;
+  // Beat two: the mark opens out into the block it is going to take. Drawn, not
+  // struck — this is the turn the shape itself becomes readable.
+  if (held && prev.tiles.length === 1) {
+    return { kind: 'select', path: [], tiles: blockAround(prev.tiles[0]), release: false };
+  }
+  // Beat three: the same block, deleted. The tiles do not change between the
+  // last two beats, or the telegraph would be a different promise on the turn it
+  // was kept.
+  if (held) return { kind: 'select', path: [], tiles: prev.tiles.map((t) => ({ ...t })), release: true };
+  return { kind: 'select', path: [], tiles: [{ ...s.player.pos }], release: false };
+}
+
+/** The paragraph around a mark: three by three, clipped to the page. */
+function blockAround(v: Vec): Vec[] {
+  const out: Vec[] = [];
+  for (let y = v.y - 1; y <= v.y + 1; y++) {
+    for (let x = v.x - 1; x <= v.x + 1; x++) {
+      if (inBounds({ x, y })) out.push({ x, y });
+    }
+  }
+  return out;
+}
+
+/**
+ * AUTOCOMPLETE: the two tiles ahead of your last step.
+ *
+ * Aimed at your MOMENTUM rather than at your position, which is the one thing on
+ * the board that no other kind reads. `facing` is set by every step and every
+ * stroke, so it is always the direction you actually last committed to.
+ *
+ * Off the edge of the page it simply comes up short, and against a player who
+ * has been holding their ground it may have nothing at all to strike. That is
+ * correct rather than a hole: you did not start anything, so there is nothing to
+ * finish.
+ */
+function autocompletePlan(e: Enemy, s: GameState): Intent {
+  const step = DIR_VEC[s.player.facing];
+  const tiles: Vec[] = [];
+  let cur = s.player.pos;
+  for (let i = 0; i < 2; i++) {
+    cur = add(cur, step);
+    if (!inBounds(cur)) break;
+    if (eq(cur, e.pos)) continue; // the suggestion is what strikes, not what is struck
+    tiles.push({ ...cur });
+  }
+  return { kind: 'sweep', path: [], tiles };
+}
+
+/**
+ * THE SELECT ALL: as much of the page as the drag has reached.
+ *
+ * Read straight off the floor clock, so the page keeps being taken whether or
+ * not the machine was interrupted — and `releasing` is what turns a block that
+ * is merely drawn into one that is deleted.
+ */
+function selectAllPlan(e: Enemy, s: GameState): Intent {
+  const { pass, count, releasing } = dragAt(s.floorTurns);
+  const tiles = documentOrder(pass)
+    .slice(0, count)
+    // Its own tile is excluded like every other sweep: the machine is what
+    // selects, not what is selected. Bookkeeping, not mercy — nobody can stand
+    // there anyway.
+    .filter((t) => !eq(t, e.pos));
+  return { kind: 'select', path: [], tiles, release: releasing };
+}
+
 /** Compute (and thereby telegraph) what this enemy will do on the coming turn. */
 export function planIntent(e: Enemy, s: GameState, rng: Rng): Intent {
   const st = ENEMY_STATS[e.kind];
@@ -646,6 +988,19 @@ export function planIntent(e: Enemy, s: GameState, rng: Rng): Intent {
       return e.ready ? carriagePlan(e) : carriageStep(e, s, rng);
     case 'carriageReturn':
       return carriageReturnPlan(e, s);
+    case 'selection':
+      return selectionPlan(e, s);
+    case 'autocomplete':
+      return autocompletePlan(e, s);
+    case 'selectAll':
+      return selectAllPlan(e, s);
+    /*
+     * A CURSOR walks onto you exactly like any chaff. Everything that makes it
+     * era III's chaff rather than era I's happens when the blow LANDS — see
+     * `displaces` and `insert` in engine.ts.
+     */
+    case 'cursor':
+      return orthoPlan(e, s, rng);
     /*
      * Walks at you like any chaff, and PUNCTUATES once it is level and beside
      * you — which is the only turn its little line is worth anything.
@@ -678,6 +1033,14 @@ export function planIntent(e: Enemy, s: GameState, rng: Rng): Intent {
 export function intentThreatens(intent: Intent, playerPos: Vec): boolean {
   if (intent.kind === 'move') return intent.path.some((v) => eq(v, playerPos));
   if (intent.kind === 'sweep') return intent.tiles.some((v) => eq(v, playerPos));
+  /*
+   * A block that is still being held down threatens nothing YET, and saying
+   * otherwise would be the more dangerous mistake: the telegraph would go red a
+   * turn early, `underThreat` would shout on a turn where standing still is
+   * free, and FLOW would pay out for leaving a mark that was never a blow. The
+   * shape is a warning; `release` is the promise.
+   */
+  if (intent.kind === 'select') return intent.release && intent.tiles.some((v) => eq(v, playerPos));
   return false;
 }
 
