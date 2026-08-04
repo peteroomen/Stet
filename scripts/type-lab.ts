@@ -21,6 +21,7 @@ import { themeFor, type Theme } from '../src/render/theme';
 const DEFS: [string, GlyphDef][] = [
   ['hero', HERO],
   ['rat', ENEMY_GLYPHS.rat],
+  ['semicolon', ENEMY_GLYPHS.semicolon],
   ['stalker', ENEMY_GLYPHS.stalker],
   ['charger', ENEMY_GLYPHS.charger],
   ['warden', ENEMY_GLYPHS.warden],

@@ -359,12 +359,33 @@ stall the spill was built to prevent.
 | `◇` | **Stalker** | 2 | 1 | 1 | Closes on the diagonal, but must step square-on to strike. |
 | `»` | **Charger** | 3 | 2 | 2 | Winds up, then lunges two tiles. Sidestep it, or break the coil. |
 | `▥` | **Warden** | 5 | 3 | 3 | Shrugs off a light stroke. Only a heavy blow stops it. |
+| `;` | **Semicolon** | 1 | 1 | 1 | Era II's chaff. Walks at you, and punctuates once it is beside you. |
 | `⊥` | **Typebar** | 2 | 1 | 1 | Never moves. Strikes the column you stand in, a turn later. |
 | `▤` | **Carriage** | 3 | 2 | 2 | Steps toward you, then sweeps its whole row. |
 
 The first four are era I and carry into every era after it. The last two are era
 II's own, and they are the reason it is a different place: era I threatens
 **tiles**, so every dodge in it is a sidestep. A machine threatens **lines**.
+
+**Every kind declares a home era**, and a test asserts no era rolls another
+era's natives. The question that prompted it was the right one: should a CARRIAGE
+turn up in a word-processor era? No — it is a piece of a typewriter, and an era
+whose threats are borrowed from the last one is a reskin. Only STALKER, CHARGER
+and WARDEN are shared: they are the game's grammar rather than any one machine's
+parts, so what you learned in the first four floors keeps paying.
+
+**Chaff is never shared**, because chaff is the most common thing on a board and
+therefore the thing that most decides where you feel you are. Era II's is THE
+SEMICOLON — in a typewriter's world the vermin are the punctuation — and it is
+what the spill draws there.
+
+It first alternated step and strike like the carriage, and the harness killed
+that outright: a thing that never enters your tile and only threatens on
+alternate beats can be **ignored forever**. Four 3-ply runs in thirty stalled at
+one health, farming spilled semicolons for three or four thousand turns, because
+killing one was optional and safe. Chaff has to be something which, ignored,
+kills you — so it acts every turn and closes into contact, exactly as a rat does.
+The row attack survives as what it does when it arrives.
 
 They are a matched pair on opposite axes and are answered by opposite steps —
 the typebar by moving sideways, the carriage by moving up or down — so learning

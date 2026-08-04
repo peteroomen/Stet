@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeSearchBrain, playRun } from './bots';
 import { chooseTrait, newGame, step } from './engine';
-import { pageAt, ringsBell } from './enemies';
+import { ENEMY_ORDER, ENEMY_STATS, pageAt, ringsBell } from './enemies';
 import {
   ERAS,
   ERA_FLOORS,
@@ -85,6 +85,41 @@ describe('eras and the floors that end them', () => {
     expect(eraAt(ERA_FLOORS + 1).hand).toBe('type');
     // Depth 4 is still the first era's boss floor, not the second era.
     expect(eraAt(ERA_FLOORS).hand).toBe('brush');
+  });
+
+  /**
+   * No era rolls another era's natives.
+   *
+   * The question that prompted this: should the CARRIAGE turn up in a word
+   * processor era? No — it is a piece of a typewriter, and an era whose threats
+   * are borrowed from the last one is a reskin. Declared on each kind as `home`
+   * so a leak is a failing test rather than something noticed in play later.
+   */
+  it('never rolls a kind that belongs to another era', () => {
+    for (const era of ERAS) {
+      for (const kind of [...era.roster, era.boss, era.chaff]) {
+        const home = ENEMY_STATS[kind].home;
+        expect({ era: era.id, kind, home }).toMatchObject({
+          home: home === 'any' ? 'any' : era.id,
+        });
+      }
+    }
+  });
+
+  it('shares only the three archetypes, and keeps chaff local', () => {
+    const shared = ENEMY_ORDER.filter((k) => ENEMY_STATS[k].home === 'any');
+    // The game's grammar, not any one machine's parts — so what you learned in
+    // the first four floors keeps paying wherever you end up.
+    expect(shared.sort()).toEqual(['charger', 'stalker', 'warden']);
+    // Chaff is the most common thing on a board, so it is the thing that most
+    // decides where you feel you are. It never crosses an era.
+    for (const era of ERAS) expect(ENEMY_STATS[era.chaff].home).toBe(era.id);
+  });
+
+  it('draws its own chaff when the page fills', () => {
+    // Era II's spill must not reach for the manuscript's vermin.
+    expect(ERAS[0].chaff).toBe('rat');
+    expect(ERAS[1].chaff).toBe('semicolon');
   });
 
   it('gives each era a roster the previous one did not have', () => {

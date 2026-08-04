@@ -22,7 +22,8 @@ export type EnemyKind =
   | 'drollery'
   | 'typebar'
   | 'carriage'
-  | 'carriageReturn';
+  | 'carriageReturn'
+  | 'semicolon';
 export type ItemKind = 'vial' | 'nib' | 'gesso';
 
 /**
@@ -198,13 +199,15 @@ export interface GameState {
  * This is a hand-written `structuredClone`, and it is here because it is by far
  * the hottest thing in the project. `step()` is pure, so every call copies the
  * whole state — and the N-ply bots call `step()` exponentially, four times per
- * ply. Measured on a mid-game board:
+ * ply. Measured by `npm run bench` on a page-3 board with four foes:
  *
- *   structuredClone            23.3 µs
- *   everything else in step()   0.1 µs
+ *   structuredClone   24.56 µs
+ *   cloneState         0.72 µs      34x faster
+ *   step() total       3.06 µs      was ~27
  *
- * The clone was **99.4%** of a turn. It is also what the previews pay four times
- * over on every real input, so this is not only a test-suite concern.
+ * An eight-fold faster turn, which took the test suite from 122s to 15s with a
+ * byte-identical curve. It is also what the previews pay four times over on
+ * every real input, so this is not only a test-suite concern.
  *
  * Written out longhand rather than generically on purpose. A `for…in` copy would
  * be nearly as slow (the cost is the generic traversal, not the allocation), and

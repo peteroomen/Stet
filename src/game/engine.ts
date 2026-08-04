@@ -408,8 +408,9 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
       const site = spillSite(d, rng);
       d.rng = rng.s;
       if (site) {
-        d.enemies.push(makeEnemy(d.nextId++, 'rat', site, rng.int(1 << 20)));
-        ev.push({ t: 'spill', phase: 'e', pos: { ...site }, kind: 'rat' });
+        const kind = eraAt(d.depth).chaff;
+        d.enemies.push(makeEnemy(d.nextId++, kind, site, rng.int(1 << 20)));
+        ev.push({ t: 'spill', phase: 'e', pos: { ...site }, kind });
       }
     }
     return;
@@ -788,9 +789,9 @@ export function step(state: GameState, action: Action): StepResult {
     const site = d.enemies.length < MAX_ENEMIES ? spillSite(d, rng) : null;
     d.rng = rng.s;
     if (site) {
-      const e = makeEnemy(d.nextId++, 'rat', site, rng.int(1 << 20));
-      d.enemies.push(e);
-      ev.push({ t: 'spill', phase: 'e', pos: { ...site }, kind: 'rat' });
+      const kind = eraAt(d.depth).chaff;
+      d.enemies.push(makeEnemy(d.nextId++, kind, site, rng.int(1 << 20)));
+      ev.push({ t: 'spill', phase: 'e', pos: { ...site }, kind });
     } else {
       // GESSO takes it first, exactly as it takes a blow — it is a layer laid
       // over the page, and this is the page coming through.

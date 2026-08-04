@@ -22,6 +22,25 @@ export interface EnemyStat {
   name: string;
   /** One line shown in the bestiary card. */
   tell: string;
+  /**
+   * Which era this kind belongs to, or `'any'` for the shared archetypes.
+   *
+   * Declared rather than implied, because "what lives where" was previously kept
+   * only in the rosters and therefore only in whoever was editing them. The
+   * question that prompted this was the right one to ask: should a CARRIAGE turn
+   * up in the word-processor era? No — it is a piece of a typewriter, and an era
+   * whose threats are borrowed from the last one is a reskin.
+   *
+   * `eras.test.ts` asserts that no era rolls another era's natives, so a leak is
+   * a failing test rather than something noticed in play three eras later.
+   *
+   * The three shared archetypes — STALKER, CHARGER, WARDEN — are `'any'` on
+   * purpose: they are the game's grammar rather than any one machine's parts, so
+   * what a player learned in the first four floors keeps paying wherever they
+   * end up. Chaff is NOT shared, because chaff is the most common thing on a
+   * board and therefore the thing that most decides where you feel you are.
+   */
+  home: 'any' | string;
 }
 
 export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
@@ -34,6 +53,7 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
     from: 1,
     name: 'RAT',
     tell: 'One step toward you, every turn. Folds to a single stroke.',
+    home: 'manuscript',
   },
   stalker: {
     hp: 2,
@@ -44,6 +64,7 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
     from: 2,
     name: 'STALKER',
     tell: 'Closes on the diagonal, but must step square-on to strike.',
+    home: 'any',
   },
   charger: {
     hp: 3,
@@ -54,6 +75,7 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
     from: 4,
     name: 'CHARGER',
     tell: 'Winds up, then lunges two tiles in a line. Sidestep it, or break the coil.',
+    home: 'any',
   },
   warden: {
     hp: 5,
@@ -64,6 +86,7 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
     from: 7,
     name: 'WARDEN',
     tell: 'Shrugs off a light stroke. Only a heavy blow stops it.',
+    home: 'any',
   },
   /*
    * THE TYPEBAR — the first thing on the page that does not chase you.
@@ -105,6 +128,38 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
     from: 5,
     name: 'TYPEBAR',
     tell: 'Never moves. Strikes the column you stand in, a turn later. Step sideways.',
+    home: 'typewriter',
+  },
+  /*
+   * THE SEMICOLON — era II's chaff, and a punctuation mark with opinions.
+   *
+   * The RAT is the manuscript's vermin and had no business on a typed page, but
+   * every era needs chaff: something cheap that folds to one stroke, fills the
+   * board out, and gives the spill something to draw. What a machine's vermin
+   * looks like is a stray mark, so this is one — the smallest thing on the page
+   * that still has a verb.
+   *
+   * It walks at you like any chaff, and the turn it draws level and beside you
+   * it PUNCTUATES: the two squares either side of it, the tiniest possible
+   * version of the era's line. A semicolon separates two clauses, and so does
+   * this — it catches you and whatever is on its other side in one mark.
+   *
+   * As dangerous as a RAT and no more: same health, same damage, same reach into
+   * your tile. What differs is the shape of the moment it arrives in, which is
+   * the whole job of era chaff — it is the most common thing on a board, so it
+   * is the thing that most decides where you feel you are.
+   */
+  semicolon: {
+    hp: 1,
+    dmg: 1,
+    poiseBreak: 1,
+    // A strider, not a slow unit — it alternates STEP and strike. See `strides`.
+    slow: false,
+    cost: 1,
+    from: 5,
+    name: 'SEMICOLON',
+    tell: 'Steps toward you, then strikes the squares either side of it.',
+    home: 'typewriter',
   },
   /*
    * THE CARRIAGE — the line that walks.
@@ -150,6 +205,7 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
     from: 6,
     name: 'CARRIAGE',
     tell: 'Steps toward you, then sweeps its whole row. Leave the row, or break it.',
+    home: 'typewriter',
   },
   /*
    * THE CARRIAGE RETURN — era II's boss, and a clock made out of its own verb.
@@ -202,6 +258,7 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
     from: 8,
     name: 'CARRIAGE RETURN',
     tell: 'Strikes a band of rows, advances a line, and returns wider. Kill it before the page runs out.',
+    home: 'typewriter',
   },
   /*
    * THE DROLLERY — the grotesque a scribe drew in the margin, and the first
@@ -226,6 +283,7 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
     from: 4,
     name: 'DROLLERY',
     tell: 'Draws another out of the margin each time it winds. Burst it, or drown.',
+    home: 'manuscript',
   },
 };
 
@@ -236,6 +294,7 @@ export const ENEMY_ORDER: EnemyKind[] = [
   'warden',
   'typebar',
   'carriage',
+  'semicolon',
   'drollery',
   'carriageReturn',
 ];
@@ -448,6 +507,23 @@ function carriageReturnPlan(e: Enemy, s: GameState): Intent {
 }
 
 /**
+ * SEMICOLON: the two squares either side of it, and nothing more.
+ *
+ * The smallest line in the game. It does not aim — like the CARRIAGE it strikes
+ * out from where it stands — so the counterplay is simply not to be beside it on
+ * the beat, which is a lesson in the era's grammar that costs one health to
+ * learn rather than three.
+ */
+function semicolonPlan(e: Enemy): Intent {
+  const tiles: Vec[] = [];
+  for (const dx of [-1, 1]) {
+    const x = e.pos.x + dx;
+    if (x >= 0 && x < SIZE) tiles.push({ x, y: e.pos.y });
+  }
+  return { kind: 'sweep', path: [], tiles };
+}
+
+/**
  * CARRIAGE: closes by LINING UP, not by getting nearer.
  *
  * A plain orthogonal chase is wrong for something that strikes a row, and the
@@ -570,6 +646,24 @@ export function planIntent(e: Enemy, s: GameState, rng: Rng): Intent {
       return e.ready ? carriagePlan(e) : carriageStep(e, s, rng);
     case 'carriageReturn':
       return carriageReturnPlan(e, s);
+    /*
+     * Walks at you like any chaff, and PUNCTUATES once it is level and beside
+     * you — which is the only turn its little line is worth anything.
+     *
+     * It first alternated step and strike like the CARRIAGE, and the harness
+     * killed that outright: a thing which never enters your tile and only
+     * threatens on alternate beats can be ignored forever. Four 3-ply runs in
+     * thirty stalled at one health, farming spilled semicolons for three or four
+     * thousand turns, because killing one was optional and safe. That breaks the
+     * spill's whole guarantee — chaff has to be something which, IGNORED, kills
+     * you. Acting every turn and closing into contact restores that; the row
+     * attack survives as what it does when it arrives.
+     */
+    case 'semicolon': {
+      const p = s.player.pos;
+      const beside = p.y === e.pos.y && Math.abs(p.x - e.pos.x) === 1;
+      return beside ? semicolonPlan(e) : orthoPlan(e, s, rng);
+    }
   }
 }
 

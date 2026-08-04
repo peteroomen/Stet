@@ -109,6 +109,31 @@ export const ENEMY_GLYPHS: Record<EnemyKind, GlyphDef> = {
     ],
     weight: 1.3,
   },
+  /*
+   * THE SEMICOLON — a stray mark, and the smallest silhouette in the set.
+   *
+   * Drawn as the character itself: a struck point above, a comma's tail below.
+   * Deliberately TINY next to everything else, because it is chaff and the
+   * board has to say so before you read anything — a player should never spend
+   * a turn working out whether the little mark is worth worrying about.
+   *
+   * It is also the only glyph in the game that is literally a letterform, which
+   * is the joke the era is built on: in a typewriter's world the vermin are the
+   * punctuation.
+   */
+  semicolon: {
+    paths: [
+      // The comma's tail, hooking left the way it does on a page.
+      [
+        [0.1, 0.12],
+        [0.16, 0.42],
+        [-0.14, 0.62],
+      ],
+    ],
+    // The point above it. Small and square: struck, not spattered.
+    dots: [[0.12, -0.3, 0.15]],
+    weight: 1.15,
+  },
   rat: {
     paths: [
       [

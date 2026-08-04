@@ -36,6 +36,16 @@ export interface Era {
   /** What waits on the era's last floor. */
   boss: EnemyKind;
   /**
+   * What the page draws when it fills, and what a summoning boss pulls out.
+   *
+   * The spill used to spawn a RAT whatever era you were in, which put the
+   * manuscript's vermin on a typed page — the one seam left open when era II
+   * shipped. Chaff is per-era for the same reason the hand is: it is the thing
+   * that appears MOST often, so it is the thing that most decides whether a
+   * crowded floor still reads as somewhere.
+   */
+  chaff: EnemyKind;
+  /**
    * The instrument every mark on the page is made with.
    *
    * A rendering concern living on a rules object on purpose: the era is the one
@@ -57,6 +67,7 @@ export const ERAS: Era[] = [
     name: 'The Manuscript',
     roster: ['rat', 'stalker', 'charger', 'warden'],
     boss: 'drollery',
+    chaff: 'rat',
     hand: 'brush',
     // The manuscript IS the base palette, so it changes nothing.
     palette: {},
@@ -74,15 +85,17 @@ export const ERAS: Era[] = [
    * never does — not "which tile is safe" but "which LINE am I on" — and they
    * are answered by opposite steps, so learning one does not give you the other.
    *
-   * The RAT is gone. Chaff belongs to the manuscript, and each era is supposed
-   * to strip something away — though the spill still draws rats, which is the
-   * one seam left to close (`Era.chaff`).
+   * The RAT is gone, and its place is taken by THE SEMICOLON — because in a
+   * typewriter's world the vermin are the punctuation. It is also what the page
+   * draws when it fills here (`chaff`), which was the last thing in era II still
+   * speaking era I.
    */
   {
     id: 'typewriter',
     name: 'The Typewriter',
-    roster: ['stalker', 'charger', 'warden', 'typebar', 'carriage'],
+    roster: ['semicolon', 'stalker', 'charger', 'warden', 'typebar', 'carriage'],
     boss: 'carriageReturn',
+    chaff: 'semicolon',
     hand: 'type',
     palette: TYPEWRITER,
   },
