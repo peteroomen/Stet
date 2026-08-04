@@ -21,6 +21,7 @@
  * machine.
  */
 
+import { TYPEWRITER, type EraPalette, type Mark } from '../render/theme';
 import type { EnemyKind } from './types';
 
 /** Floors per era. The last of them is the boss. */
@@ -34,6 +35,20 @@ export interface Era {
   roster: EnemyKind[];
   /** What waits on the era's last floor. */
   boss: EnemyKind;
+  /**
+   * The instrument every mark on the page is made with.
+   *
+   * A rendering concern living on a rules object on purpose: the era is the one
+   * thing that knows a floor is somewhere else, and having the hand here means
+   * the board, the page and the chrome all change together off a single source
+   * rather than three of them agreeing by hand.
+   */
+  hand: Mark;
+  /**
+   * How the page itself reads. Layered over whichever of day/night is active, so
+   * an era states only what it changes and both lightings keep working.
+   */
+  palette: EraPalette;
 }
 
 export const ERAS: Era[] = [
@@ -42,6 +57,9 @@ export const ERAS: Era[] = [
     name: 'The Manuscript',
     roster: ['rat', 'stalker', 'charger', 'warden'],
     boss: 'drollery',
+    hand: 'brush',
+    // The manuscript IS the base palette, so it changes nothing.
+    palette: {},
   },
   /*
    * II · THE TYPEWRITER, depths 5–8.
@@ -63,6 +81,8 @@ export const ERAS: Era[] = [
     name: 'The Typewriter',
     roster: ['stalker', 'charger', 'warden', 'typebar'],
     boss: 'drollery',
+    hand: 'type',
+    palette: TYPEWRITER,
   },
   /*
    * III · The Terminal is designed and unbuilt.

@@ -1,5 +1,15 @@
-import { blobPath, brushStroke, inkStroke, type Pt } from './ink';
+import { blobPath, brushStroke, hash3, inkStroke, strikeStroke, type Pt } from './ink';
 import type { EnemyKind, ItemKind } from '../game/types';
+
+/**
+ * The hand a mark is made in. One per era — see game/eras.ts.
+ *
+ * The SILHOUETTES do not change between them. A RAT is a RAT whether brushed or
+ * struck, so everything a player learned in the first four floors keeps paying;
+ * only the instrument changes. That is the whole payoff of the era system, and
+ * it is why this is a mode on the renderer rather than a second set of glyphs.
+ */
+export type Mark = 'brush' | 'nib' | 'type';
 
 /**
  * Every actor is a set of polylines in unit space (roughly -1..1), inked at draw
@@ -367,8 +377,8 @@ export interface DrawOpts {
   widthScale?: number;
   dash?: number[];
   passes?: number;
-  /** Render with a loaded brush rather than a nib. */
-  brush?: boolean;
+  /** Which instrument makes the mark. Defaults to the nib. */
+  mark?: Mark;
   /** Skip the cache — for one-off marks that will never repeat. */
   uncached?: boolean;
   /**
@@ -401,7 +411,57 @@ function paintGlyph(ctx: CanvasRenderingContext2D, def: GlyphDef, o: DrawOpts): 
     ctx.restore();
   }
 
-  if (o.brush) {
+  /*
+   * MISREGISTRATION, applied to the whole glyph and nothing smaller.
+   *
+   * A typed character is one strike of one bar, so it lands slightly off its
+   * place on the line and slightly off square — together, not stroke by stroke.
+   * Jittering the strokes independently reads as a shaky hand, which is the
+   * thing this era exists to stop reading as.
+   *
+   * Small numbers on purpose: about 3% of a cell and under two degrees. Past
+   * that it stops looking like a machine out of adjustment and starts looking
+   * like a mistake.
+   */
+  let ribbon = 1;
+  if (o.mark === 'type') {
+    ctx.save();
+    ctx.translate(
+      (hash3(o.seed + 31, 0, 0) - 0.5) * o.size * 0.06,
+      (hash3(o.seed + 32, 0, 0) - 0.5) * o.size * 0.06,
+    );
+    ctx.rotate((hash3(o.seed + 33, 0, 0) - 0.5) * 0.055);
+    // And the ribbon is unevenly inked from character to character, not only
+    // along one stroke — some letters simply come out grey.
+    ribbon = 0.76 + hash3(o.seed + 34, 0, 0) * 0.24;
+  }
+
+  if (o.mark === 'type') {
+    /*
+     * The NIB silhouettes, not the brush ones.
+     *
+     * `brushPaths` exists because a brush mark is twice the width of the same
+     * stroke and close parallel detail merges — the WARDEN's three body bars had
+     * to become two. A struck mark is a hard thin face, much closer to a nib than
+     * to a brush, so it can carry the full detail and should: taking the brush's
+     * simplified paths cost the warden its bars for no reason.
+     *
+     * Barely heavier than the nib. A slug is a solid face rather than a drawn
+     * line, but 1.15x was enough to close the drollery's mouth.
+     */
+    const w = o.size * 0.075 * (def.weight ?? 1) * (o.widthScale ?? 1) * 1.04;
+    def.paths.forEach((path, i) => {
+      strikeStroke(ctx, path.map(map), {
+        color: o.color,
+        width: w,
+        seed: o.seed + i * 313,
+        amp: o.size * 0.004,
+        alpha: alpha * ribbon,
+        boil: o.boil ?? 0,
+        wear: 0.38,
+      });
+    });
+  } else if (o.mark === 'brush') {
     // 1.85x read as a blot rather than a brush mark — at that weight a 5x5 board
     // of actors is mostly ink, and the silhouettes stop being distinguishable at
     // a glance, which is the one thing they have to do. The variation that was
@@ -439,12 +499,23 @@ function paintGlyph(ctx: CanvasRenderingContext2D, def: GlyphDef, o: DrawOpts): 
 
   for (const [dx, dy, r] of def.dots ?? []) {
     ctx.save();
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = alpha * ribbon;
     ctx.fillStyle = o.color;
-    blobPath(ctx, dx * half, dy * half, r * half, o.seed + 77, 0.3, 9, o.boil ?? 0);
-    ctx.fill();
+    if (o.mark === 'type') {
+      // A struck dot is a slug face, not a blob. Square, like everything else
+      // a machine puts on a page.
+      const s = r * half * 1.7;
+      ctx.fillRect(dx * half - s / 2, dy * half - s / 2, s, s);
+    } else {
+      blobPath(ctx, dx * half, dy * half, r * half, o.seed + 77, 0.3, 9, o.boil ?? 0);
+      ctx.fill();
+    }
     ctx.restore();
   }
+
+  // Closes the misregistration transform opened above, after the dots so the
+  // whole character has shifted as one thing.
+  if (o.mark === 'type') ctx.restore();
 }
 
 /**
@@ -527,7 +598,7 @@ export function drawGlyph(
     Math.round(rot * 100),
     Math.round((o.widthScale ?? 1) * 20),
     o.passes ?? 2,
-    o.brush ? 'b' : 'n',
+    o.mark ?? 'nib',
   ].join('|');
 
   const dpr = Math.min(window.devicePixelRatio || 1, 2.5);

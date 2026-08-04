@@ -183,6 +183,103 @@ export function brushStroke(ctx: CanvasRenderingContext2D, pts: Pt[], o: BrushOp
   ctx.restore();
 }
 
+export interface StrikeOpts {
+  color: string;
+  /** Constant. A typebar has one width and hits with all of it. */
+  width: number;
+  seed: number;
+  alpha?: number;
+  boil?: number;
+  /** Mechanical slop, in pixels. Small — this is a machine, not a hand. */
+  amp?: number;
+  /**
+   * How worn the ribbon is, 0..1.
+   *
+   * Drives the uneven inking ALONG the stroke. 0 prints like a fresh ribbon and
+   * reads as vector art; the whole character of a typed page is that it does not.
+   */
+  wear?: number;
+}
+
+/**
+ * A struck mark — the typewriter's answer to `brushStroke`.
+ *
+ * Not a parameterisation of the brush, because what makes type read as type is
+ * the ABSENCE of everything the brush is made of. `brushStroke` is a taper plus
+ * three pressure harmonics plus dry-brush breakup: a hand varying its weight
+ * along a stroke. A typebar cannot vary anything. It is a piece of metal, one
+ * width, hitting the page as hard as the spring will drive it.
+ *
+ * So what is left has to carry the whole impression, and it is three things:
+ *
+ *   - **Hard edges and constant weight.** Butt caps, mitred joins, one lineWidth.
+ *   - **Misregistration.** Handled a level up in `paintGlyph`, because a typed
+ *     character is ONE strike of one bar: the whole glyph shifts and tilts
+ *     together, which is exactly what makes a typed line look typed rather than
+ *     set. Per-stroke jitter would read as a shaky hand again.
+ *   - **Ribbon fade.** The inking is uneven along the LENGTH of the stroke,
+ *     because a worn ribbon is worn in patches — so the unevenness is walked at
+ *     a fixed spatial step rather than applied per vertex.
+ *
+ * Segments overlap by a hair. Butt caps abutting exactly leave hairline seams of
+ * bare paper at every step, which reads as a dotted line rather than a struck
+ * one.
+ */
+export function strikeStroke(ctx: CanvasRenderingContext2D, pts: Pt[], o: StrikeOpts): void {
+  if (pts.length < 2) return;
+  const path = wobble(pts, o.seed, o.amp ?? 0, o.boil ?? 0);
+  const alpha = o.alpha ?? 1;
+  const wear = clamp01(o.wear ?? 0.4);
+  /*
+   * The unevenness must be FINER than the stroke is wide.
+   *
+   * Stepping at about the stroke width makes the mottle the same size as the
+   * letterform, and the render grid was blunt about the result: every glyph read
+   * as a checkerboard of tiles rather than as a struck mark, and the WARDEN's
+   * bars merged into a grey block. Half the width is texture; a whole width is
+   * a pattern competing with the silhouette.
+   */
+  const step = Math.max(1, o.width * 0.62);
+
+  ctx.save();
+  ctx.strokeStyle = o.color;
+  ctx.lineWidth = o.width;
+  ctx.lineCap = 'butt';
+  ctx.lineJoin = 'miter';
+
+  let k = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    const [ax, ay] = path[i];
+    const [bx, by] = path[i + 1];
+    const len = Math.hypot(bx - ax, by - ay);
+    if (len < 0.01) continue;
+    const n = Math.max(1, Math.ceil(len / step));
+    const lap = Math.min(0.5, (o.width * 0.35) / len);
+
+    for (let j = 0; j < n; j++) {
+      const t0 = j / n;
+      const t1 = Math.min(1, (j + 1) / n + lap);
+      const h = hash3(o.seed + 601, k++, o.boil ?? 0);
+      /*
+       * Mostly solid, occasionally starved — and the starved patches are only a
+       * LITTLE lighter.
+       *
+       * A worn ribbon under-inks; it does not punch holes. The first version
+       * dropped to a quarter alpha and the glyphs came apart into dashes. What
+       * a typed page actually looks like is an even mark that is slightly
+       * blotchy, so the contrast here is deliberately narrow.
+       */
+      const ink = h < wear * 0.32 ? 0.62 + h * 0.44 : 0.93 + h * 0.07;
+      ctx.globalAlpha = alpha * Math.min(1, ink);
+      ctx.beginPath();
+      ctx.moveTo(ax + (bx - ax) * t0, ay + (by - ay) * t0);
+      ctx.lineTo(ax + (bx - ax) * t1, ay + (by - ay) * t1);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 /**
  * A volute — the scrolled corner flourish of a decorated page.
  *

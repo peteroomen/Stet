@@ -213,11 +213,44 @@ physical misregistration, era III has neither.
 | Mark | loaded brush | struck typebar | raster glyph |
 | Ink | iron gall + gold | bichrome ribbon, black / red | green or amber |
 
-Only **I** is built. II and III each need a mark-making system of their own —
-that is the bulk of that work, and it wants a render grid rather than a live
-board, the same way the brush numbers were chosen. Until they exist the descent
-repeats the manuscript; the threat budget and the marginalia still escalate, so a
-deep run is harder without pretending to be somewhere new.
+**I and II are built.** III still needs a mark-making system of its own — that is
+the bulk of that work, and it wants a render grid rather than a live board, the
+same way the brush numbers were chosen (`npm run shots:type`). Past depth 8 the
+descent repeats the typewriter; the threat budget and the marginalia still
+escalate, so a deep run is harder without pretending to be somewhere new.
+
+An era owns three things, and adding one is now a data change plus a mark mode:
+
+- **`hand`** — which instrument every mark on the page is made with. The
+  *silhouettes do not change between them*: a RAT is a RAT brushed or struck, so
+  what you learned in the first four floors keeps paying, and only the instrument
+  differs. That is the whole payoff of the system.
+- **`palette`** — a **delta** over whichever of day/night is lit, so an era states
+  only what its medium changes and both lightings keep working. This is where
+  paper colour lives: cream vellum, cool foolscap, and whatever comes next.
+- **`roster`** — what the floors can roll, and its boss.
+
+The typed mark is `strikeStroke()`, and it is a sibling of `brushStroke()` rather
+than a setting on it, because what makes type read as type is the *absence* of
+everything the brush is made of. No taper, no pressure harmonics, no dry-brush
+tail: one width, butt caps, mitred joins. What carries the impression instead is
+**misregistration** — the whole glyph, not each stroke, landing a hair off its
+place and off square, because a typed character is one strike of one bar — and
+**ribbon fade**, uneven inking walked at a fixed *spatial* step so a worn patch is
+a length of ribbon rather than a vertex of the letterform.
+
+Both of those were tuned on the render grid and both were wrong first time. The
+mottle stepped at the stroke width, which made every glyph a checkerboard and
+merged the WARDEN's bars into a block; and it dropped to a quarter alpha, which
+broke the marks into dashes. A worn ribbon *under-inks*, it does not punch holes.
+
+The margin is era-owned too, and recolouring is not enough: a gilt vine in grey
+is not a typed page, it is a manuscript with the lights off. The gilding's
+elegance was never the foliage, it was a **bright rule over a shadowed one** —
+which is what reads as metal — so era II keeps exactly that in steel and adds one
+mark, the red margin stop. A first version added tab ticks across the head and
+was correctly called crowded. Blots follow the same principle: a scribe spills
+ink, a typist strikes a passage out, so era II blocks a tile with `xxxx`.
 
 **This is structure, not decoration.** Every enemy kind used to unlock by depth
 7, which meant depths 8 and beyond were the same game forever — exactly why the

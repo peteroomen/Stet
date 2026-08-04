@@ -2,6 +2,7 @@ import { sfx } from '../audio/sfx';
 import { Effects } from '../render/effects';
 import { EMPTY_ANIM, Renderer, buildAnim, strikeWeight, type TurnAnim } from '../render/renderer';
 import { applyThemeVars, type ThemeName } from '../render/theme';
+import { eraAt } from './eras';
 import { chooseTrait, demoState, newGame, step } from './engine';
 import { MAX_ENEMIES } from './grid';
 import { previewMoves, underThreat, type MoveOutcome } from './preview';
@@ -133,6 +134,8 @@ export class Runtime {
 
   best = 0;
   themeName: ThemeName = 'day';
+  /** Era the chrome is currently wearing, so a descent only re-pushes on a change. */
+  private chromeEra = '';
 
   /**
    * Whether this player has ever held their ground.
@@ -152,7 +155,20 @@ export class Runtime {
 
     this.state = demoState(randomSeed());
     this.renderer = new Renderer(canvas, this.effects, this.themeName);
-    applyThemeVars(this.themeName);
+    this.syncChrome();
+  }
+
+  /**
+   * Push the current lighting AND era into the CSS custom properties.
+   *
+   * The React chrome — HUD, cards, the state line — is styled entirely off these
+   * vars, so it has to be re-pushed whenever either changes. Missing the era half
+   * leaves the frame around the board in the manuscript's gold while the board
+   * itself has gone to steel, which reads as a bug rather than as a place.
+   */
+  private syncChrome(): void {
+    this.chromeEra = eraAt(this.state.depth).id;
+    applyThemeVars(this.themeName, eraAt(this.state.depth).palette);
   }
 
   get muted(): boolean {
@@ -189,7 +205,7 @@ export class Runtime {
     this.renderer.themeName = name;
     this.renderer.invalidatePaper();
     this.renderer.invalidateGlyphs();
-    applyThemeVars(name);
+    this.syncChrome();
     localStorage.setItem(THEME_KEY, name);
     sfx.ui();
   }
@@ -587,6 +603,9 @@ export class Runtime {
 
       case 'descend': {
         sfx.descend(ev.depth);
+        // A descent can carry you into a new era, and the chrome is not on the
+        // canvas — it will not follow unless it is told.
+        if (eraAt(ev.depth).id !== this.chromeEra) this.syncChrome();
         this.effects.clearStains();
         fx.addFlash(0.16, t.paper);
         break;

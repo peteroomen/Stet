@@ -13,6 +13,8 @@
     "model": "vite-node scripts/model.ts",
     "check:swipe": "vite build && node scripts/swipe-check.mjs",
     "shots:brush": "node scripts/brush-shots.mjs",
+    "shots:type": "node scripts/type-shots.mjs",
+    "shots:era": "vite build && node scripts/era-shot.mjs",
     "shots:strike": "vite build && node scripts/strike-frames.mjs",
     "shots:costs": "vite build && node scripts/costs-shot.mjs",
     "check:cards": "vite build && node scripts/cards-check.mjs",

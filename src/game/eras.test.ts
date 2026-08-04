@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { makeSearchBrain, playRun } from './bots';
 import { chooseTrait, newGame, step } from './engine';
-import { ERA_FLOORS, eraAt, isAfterBoss, isBossFloor } from './eras';
+import { ERAS, ERA_FLOORS, eraAt, isAfterBoss, isBossFloor } from './eras';
+import { themeFor } from '../render/theme';
 import { SHIPPED } from './rules';
 import type { GameState } from './types';
 
@@ -44,6 +45,48 @@ describe('eras and the floors that end them', () => {
     for (const d of [1, 4, 5, 12, 40, 400]) {
       expect(eraAt(d).roster.length).toBeGreaterThan(0);
       expect(eraAt(d).boss).toBeTruthy();
+      expect(eraAt(d).hand).toBeTruthy();
+    }
+  });
+
+  /**
+   * An era is a PLACE, and a place has to differ in what it asks of you as well
+   * as in how it looks. These are the two halves of that claim.
+   */
+  it('changes hands between the manuscript and the typewriter', () => {
+    expect(eraAt(1).hand).toBe('brush');
+    expect(eraAt(ERA_FLOORS + 1).hand).toBe('type');
+    // Depth 4 is still the first era's boss floor, not the second era.
+    expect(eraAt(ERA_FLOORS).hand).toBe('brush');
+  });
+
+  it('gives each era a roster the previous one did not have', () => {
+    const first = new Set(ERAS[0].roster);
+    const second = new Set(ERAS[1].roster);
+    expect([...second].some((k) => !first.has(k))).toBe(true);
+    expect([...first].some((k) => !second.has(k))).toBe(true);
+  });
+
+  /*
+   * A palette is a DELTA over the lighting, so an era that states a colour must
+   * state it for both — otherwise night play silently falls back to era I's
+   * page for that one value and the board ends up half in each medium.
+   */
+  it('states every colour it changes in both lightings', () => {
+    for (const era of ERAS) {
+      const day = Object.keys(era.palette.day ?? {}).sort();
+      const night = Object.keys(era.palette.night ?? {}).sort();
+      expect(day).toEqual(night);
+    }
+  });
+
+  it('lays the era over the lighting rather than replacing it', () => {
+    const base = themeFor('day', {});
+    const typed = themeFor('day', ERAS[1].palette);
+    expect(typed.paper).not.toBe(base.paper);
+    // Untouched keys fall through, so an era only has to say what differs.
+    for (const k of Object.keys(base) as (keyof typeof base)[]) {
+      if (!(k in (ERAS[1].palette.day ?? {}))) expect(typed[k]).toBe(base[k]);
     }
   });
 

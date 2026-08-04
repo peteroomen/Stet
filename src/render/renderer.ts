@@ -1,5 +1,5 @@
 import { ENEMY_STATS, intentThreatens } from '../game/enemies';
-import { eraAt, isBossFloor } from '../game/eras';
+import { eraAt, isBossFloor, type Era } from '../game/eras';
 import { DIR_VEC, SIZE, add } from '../game/grid';
 import type { MoveOutcome } from '../game/preview';
 import type { Dir, Ev, GameState, Vec } from '../game/types';
@@ -12,6 +12,7 @@ import {
   clearGlyphCache,
   drawGlyph,
   glyphFor,
+  type Mark,
 } from './glyphs';
 import {
   blobPath,
@@ -22,10 +23,11 @@ import {
   hash3,
   inkStroke,
   lerp,
+  strikeStroke,
   volutePath,
   type Pt,
 } from './ink';
-import { THEMES, type Theme, type ThemeName } from './theme';
+import { themeFor, type EraPalette, type Theme, type ThemeName } from './theme';
 
 /* -------------------------------------------------------------------------
  * Turn timing. Snappy on purpose: a whole turn resolves in about a quarter of a
@@ -345,6 +347,7 @@ function makePaper(
   theme: Theme,
   depth: number,
   dpr: number,
+  era: Era,
 ): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.floor(w * dpr));
@@ -375,11 +378,13 @@ function makePaper(
   ctx.fillRect(0, 0, w, h);
   ctx.restore();
 
-  // Foxing — a few soft age spots, stable per depth.
+  // Foxing — a few soft age spots, stable per depth. Machine-made paper is
+  // younger and has had less time to spot, so later eras get fewer and fainter.
+  const foxing = era.hand === 'brush' ? 6 : 2;
   ctx.save();
-  ctx.globalAlpha = 0.05;
+  ctx.globalAlpha = era.hand === 'brush' ? 0.05 : 0.03;
   ctx.fillStyle = theme.grain;
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < foxing; i++) {
     const x = hash3(seed, i * 3, 0) * w;
     const y = hash3(seed, i * 3 + 1, 0) * h;
     const r = (0.05 + hash3(seed, i * 3 + 2, 0) * 0.12) * Math.min(w, h);
@@ -419,23 +424,34 @@ function makePaper(
   const y0 = g.pad;
   const x1 = g.pad + g.cell * SIZE;
   const y1 = g.pad + g.cell * SIZE;
+  /*
+   * RULED FOOLSCAP in era II, and the ruling is doing teaching work.
+   *
+   * A manuscript page is gridded both ways because a scribe rules a grid. Ruled
+   * paper is ruled in one direction only — and horizontal lines are what this
+   * era's threats are made of, so the page's own furniture says "this place is
+   * about lines" before a single enemy has moved. The verticals survive as a
+   * much fainter tint so the tiles are still legible as tiles.
+   */
+  const ruled = era.hand !== 'brush';
   for (let i = 1; i < SIZE; i++) {
     const x = x0 + g.cell * i;
     const y = y0 + g.cell * i;
     inkStroke(ctx, [[x, y0], [x, y1]] as Pt[], {
       color: theme.rule,
-      width: Math.max(1, g.cell * 0.016),
+      width: Math.max(1, g.cell * (ruled ? 0.01 : 0.016)),
       seed: seed + i * 17,
-      amp: g.cell * 0.012,
-      alpha: 0.85,
+      amp: g.cell * (ruled ? 0.002 : 0.012),
+      alpha: ruled ? 0.3 : 0.85,
       passes: 1,
     });
     inkStroke(ctx, [[x0, y], [x1, y]] as Pt[], {
       color: theme.rule,
-      width: Math.max(1, g.cell * 0.016),
+      width: Math.max(1, g.cell * (ruled ? 0.02 : 0.016)),
       seed: seed + i * 41 + 500,
-      amp: g.cell * 0.012,
-      alpha: 0.85,
+      // A machine rules a straight line. Only the hand wanders.
+      amp: g.cell * (ruled ? 0.002 : 0.012),
+      alpha: ruled ? 1 : 0.85,
       passes: 1,
     });
   }
@@ -477,16 +493,31 @@ function makePaper(
     },
   );
 
-  illuminate(ctx, g, theme, seed, x0, y0, x1, y1);
+  decorate(ctx, g, theme, seed, x0, y0, x1, y1, era);
 
-  // The depth, rubricated — a scribe's red numeral in the margin.
+  /*
+   * The depth, set the way the era would set it.
+   *
+   * A scribe rubricates a roman numeral in the margin. A typist types a page
+   * number — arabic, monospaced, red because the ribbon has a red half and a
+   * page number is the one thing worth rolling the ribbon over for.
+   */
   ctx.save();
   ctx.globalAlpha = 0.92;
   ctx.fillStyle = theme.blood;
-  ctx.font = `700 ${Math.round(g.pad * 0.5)}px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(roman(depth), x0 + g.cell * 0.02, y0 - g.pad * 0.34);
+  if (era.hand === 'brush') {
+    ctx.font = `700 ${Math.round(g.pad * 0.5)}px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`;
+    ctx.fillText(roman(depth), x0 + g.cell * 0.02, y0 - g.pad * 0.34);
+  } else {
+    ctx.font = `700 ${Math.round(g.pad * 0.4)}px ui-monospace, "SF Mono", Menlo, Consolas, monospace`;
+    ctx.letterSpacing = '0.12em';
+    // Off its line and off square, like everything else the machine puts down.
+    ctx.translate(x0 + g.cell * 0.02, y0 - g.pad * 0.34);
+    ctx.rotate(-0.012);
+    ctx.fillText(String(depth).padStart(2, '0'), 0, 0);
+  }
   ctx.restore();
 
   return c;
@@ -529,6 +560,85 @@ function roman(n: number): string {
  * with the board for attention is decoration that makes the game worse, and this
  * board has to stay readable a turn ahead.
  */
+/**
+ * The margin, set the way the era sets margins.
+ *
+ * Recolouring the gilded vine for era II was tried and is wrong — a gilt vine in
+ * grey is not a typed page, it is a manuscript with the lights off. The decision
+ * an era makes about its margin is not "what colour is the gold", it is what a
+ * page of that kind has in its margin AT ALL, and a typewriter's answer is: the
+ * red margin stop and the tab ticks, because those are the only marks a typist
+ * ever puts outside the text block.
+ */
+function decorate(
+  ctx: CanvasRenderingContext2D,
+  g: Geometry,
+  theme: Theme,
+  seed: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  era: Era,
+): void {
+  if (era.hand === 'brush') illuminate(ctx, g, theme, seed, x0, y0, x1, y1);
+  else typeset(ctx, g, theme, seed, x0, y0, x1, y1);
+}
+
+/**
+ * II · the typed margin: a steel band and a single red stop rule.
+ *
+ * The first version added tab ticks along the head as well, and it was reported
+ * straight back as crowded and less beautiful than the gold it replaced — which
+ * it was. The gilding's elegance never came from the vine; it came from a BRIGHT
+ * RULE OVER A SHADOWED ONE, which is what reads as metal rather than as a
+ * coloured line. So era II keeps exactly that and changes the metal: steel
+ * instead of leaf, and no foliage on it, because a typed page is not decorated.
+ *
+ * What it adds is one mark and one only — the red margin stop. It is the single
+ * thing a typist actually puts outside the text block, it is the ribbon's own
+ * second colour, and one line is not crowding.
+ */
+function typeset(
+  ctx: CanvasRenderingContext2D,
+  g: Geometry,
+  theme: Theme,
+  seed: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): void {
+  const m = g.pad * 0.4;
+  const bx0 = x0 - m;
+  const by0 = y0 - m;
+  const bx1 = x1 + m;
+  const by1 = y1 + m;
+
+  // The same two-tone band the illumination uses, in the machine's material.
+  // Tighter and a shade quieter: steel catches less light than gold leaf.
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = theme.leafDeep;
+  ctx.lineWidth = g.cell * 0.034;
+  ctx.strokeRect(bx0, by0, bx1 - bx0, by1 - by0);
+  ctx.globalAlpha = 0.62;
+  ctx.strokeStyle = theme.leaf;
+  ctx.lineWidth = g.cell * 0.016;
+  ctx.strokeRect(bx0 - 1, by0 - 1, bx1 - bx0, by1 - by0);
+  ctx.restore();
+
+  // The margin stop. Full height, because that is what a margin is.
+  strikeStroke(ctx, [[x0 - m * 0.5, by0 - g.cell * 0.1], [x0 - m * 0.5, by1 + g.cell * 0.1]] as Pt[], {
+    color: theme.blood,
+    width: Math.max(1, g.cell * 0.018),
+    seed: seed + 1201,
+    amp: g.cell * 0.001,
+    alpha: 0.42,
+    wear: 0.5,
+  });
+}
+
 function illuminate(
   ctx: CanvasRenderingContext2D,
   g: Geometry,
@@ -636,6 +746,16 @@ function hexToRgb(hex: string): [number, number, number] {
 export class Renderer {
   private paper: HTMLCanvasElement | null = null;
   private paperKey = '';
+  /** The era's instrument. Set from the depth at the top of every draw. */
+  private hand: Mark = 'brush';
+  /**
+   * The era's palette, likewise.
+   *
+   * Held here rather than looked up per call because `theme` is read from a few
+   * dozen places a frame, and every one of them has to agree about which era it
+   * is drawing — a floor half in one palette would be worse than either.
+   */
+  private palette: EraPalette = {};
 
   constructor(
     public canvas: HTMLCanvasElement,
@@ -644,7 +764,7 @@ export class Renderer {
   ) {}
 
   get theme(): Theme {
-    return THEMES[this.themeName];
+    return themeFor(this.themeName, this.palette);
   }
 
   invalidatePaper(): void {
@@ -689,9 +809,23 @@ export class Renderer {
     const ox = (cssW - size) / 2;
     const oy = (cssH - size) / 2;
 
-    const key = `${cssW}x${cssH}:${size}:${this.themeName}:${state.depth}:${dpr}`;
+    /*
+     * The instrument this floor is drawn with.
+     *
+     * Read off the era rather than passed in, so every mark on the board changes
+     * hand together the moment you descend into a new one — actors, items, hero.
+     */
+    const era = eraAt(state.depth);
+    this.hand = era.hand;
+    if (this.palette !== era.palette) {
+      // A new era is a different set of colours in every cached glyph bitmap.
+      this.palette = era.palette;
+      clearGlyphCache();
+    }
+
+    const key = `${cssW}x${cssH}:${size}:${this.themeName}:${era.id}:${state.depth}:${dpr}`;
     if (!this.paper || this.paperKey !== key) {
-      this.paper = makePaper(cssW, cssH, size, ox, oy, theme, state.depth, dpr);
+      this.paper = makePaper(cssW, cssH, size, ox, oy, theme, state.depth, dpr, era);
       this.paperKey = key;
     }
 
@@ -739,10 +873,49 @@ export class Renderer {
     }
   }
 
+  /**
+   * Impassable ink.
+   *
+   * What that MEANS is era-dependent, and it is the last thing on the board that
+   * was still a manuscript artefact in era II. A scribe's page gets a spilled
+   * blot; a typist does not spill ink, a typist strikes a passage out — so era II
+   * blocks a tile with a block of struck-over characters, xxxx, which is exactly
+   * what "you cannot go here, this is deleted" looks like on a typed page.
+   */
   private drawBlots(ctx: CanvasRenderingContext2D, g: Geometry, s: GameState, boil: number): void {
     for (const b of s.blots) {
       const [cx, cy] = centerOf(g, b);
       const seed = b.x * 131 + b.y * 977 + 17;
+
+      if (this.hand !== 'brush') {
+        const r = g.cell * 0.34;
+        const rows = 3;
+        for (let row = 0; row < rows; row++) {
+          const y = cy + (row - (rows - 1) / 2) * (r * 0.62);
+          // Struck over twice, the way a typist actually kills a word: the
+          // crossbars first, then the same line hit again slightly off.
+          for (const lean of [1, -1]) {
+            strikeStroke(
+              ctx,
+              [
+                [cx - r, y - r * 0.26 * lean],
+                [cx + r, y + r * 0.26 * lean],
+              ] as Pt[],
+              {
+                color: this.theme.ink,
+                width: g.cell * 0.055,
+                seed: seed + row * 71 + (lean > 0 ? 0 : 311),
+                amp: g.cell * 0.004,
+                alpha: 0.88,
+                boil,
+                wear: 0.3,
+              },
+            );
+          }
+        }
+        continue;
+      }
+
       ctx.save();
       ctx.globalAlpha = 0.92;
       ctx.fillStyle = this.theme.ink;
@@ -795,7 +968,7 @@ export class Renderer {
         seed: 5501,
         boil,
         alpha: 0.95,
-        brush: true,
+        mark: this.hand,
       });
     } else {
       // Sealed: the way down is visible from the moment you arrive, so the floor
@@ -866,7 +1039,7 @@ export class Renderer {
         size: g.cell * 0.46,
         seed: it.seed,
         boil,
-        brush: true,
+        mark: this.hand,
       });
     }
   }
@@ -1252,7 +1425,7 @@ export class Renderer {
         scale: coiled,
         seed: e.seed,
         boil,
-        brush: true,
+        mark: this.hand,
       });
 
       // The guard bracket over a braced foe is gone. It meant "a stroke will not
@@ -1380,7 +1553,7 @@ export class Renderer {
       seed: 101,
       boil,
       rotation: FACING_ROTATION[s.player.facing] ?? 0,
-      brush: true,
+      mark: this.hand,
     });
   }
 

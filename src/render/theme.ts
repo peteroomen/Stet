@@ -31,6 +31,80 @@ export interface Theme {
 
 export type ThemeName = 'day' | 'night';
 
+/** Re-exported so `game/eras.ts` can name a hand without importing the glyph layer. */
+export type { Mark } from './glyphs';
+
+/**
+ * What an era changes about the page, per lighting.
+ *
+ * A DELTA rather than a whole theme, and that is the point: an era says only
+ * what is different about its medium, and both day and night keep working
+ * without anyone maintaining four palettes by hand. An era that changes nothing
+ * — the manuscript, which is the base — is `{}`.
+ */
+export interface EraPalette {
+  day?: Partial<Theme>;
+  night?: Partial<Theme>;
+}
+
+/**
+ * II · THE TYPEWRITER.
+ *
+ * Foolscap rather than vellum: machine-made paper, younger, cooler and greyer
+ * than a page someone scraped and stretched. The rule goes faint BLUE, which is
+ * both what ruled foolscap actually is and a piece of teaching — the page's own
+ * furniture is now horizontal lines, and lines are what this era's threats are
+ * made of.
+ *
+ * The danger colour comes from the machine. A typewriter ribbon is bichrome,
+ * black over red, so era II's red is not an overlay on the medium — it IS the
+ * other half of the ribbon, and every telegraph is struck in it.
+ *
+ * The hero stays the only blue on the page, but changes pigment: ground lapis
+ * belongs to an illuminator, and the blue a machine of this period puts on paper
+ * is duplicating ink. Same rule, right chemistry.
+ *
+ * The gilding goes to steel. Gold leaf on a typed page would be a costume; the
+ * frame is the machine's own metal.
+ */
+export const TYPEWRITER: EraPalette = {
+  day: {
+    paper: '#EFEDE4',
+    paperDeep: '#CFCCBF',
+    grain: '#6E6E64',
+    rule: '#A9BBD0',
+    ink: '#14161A',
+    inkSoft: '#585C63',
+    blood: '#B0242F',
+    danger: '#B0242F',
+    gold: '#8A8578',
+    ghost: '#8E8E85',
+    hero: '#2A4A9E',
+    leaf: '#9A978C',
+    leafDeep: '#5E5C55',
+  },
+  night: {
+    paper: '#121315',
+    paperDeep: '#06070A',
+    grain: '#C6C6BC',
+    rule: '#2E3A4A',
+    ink: '#E6E4DA',
+    inkSoft: '#94958E',
+    blood: '#DA5147',
+    danger: '#DA5147',
+    gold: '#B0AB9A',
+    ghost: '#67675F',
+    hero: '#7FA6EA',
+    leaf: '#B8B4A6',
+    leafDeep: '#55534C',
+  },
+};
+
+/** The theme a floor is actually drawn in: the lighting, with the era laid over it. */
+export function themeFor(name: ThemeName, palette: EraPalette): Theme {
+  return { ...THEMES[name], ...(palette[name] ?? {}) };
+}
+
 export const THEMES: Record<ThemeName, Theme> = {
   // Aged paper under a desk lamp.
   day: {
@@ -66,9 +140,14 @@ export const THEMES: Record<ThemeName, Theme> = {
   },
 };
 
-/** Mirror the active theme into CSS custom properties for the React chrome. */
-export function applyThemeVars(name: ThemeName): void {
-  const t = THEMES[name];
+/**
+ * Mirror the active theme into CSS custom properties for the React chrome.
+ *
+ * Takes the era's palette too, or the chrome keeps wearing era I while the board
+ * has moved on — the HUD, the cards and the state line all read these vars.
+ */
+export function applyThemeVars(name: ThemeName, palette: EraPalette = {}): void {
+  const t = themeFor(name, palette);
   const root = document.documentElement;
   root.dataset.theme = name;
   for (const [k, v] of Object.entries(t)) root.style.setProperty(`--${k}`, v);
