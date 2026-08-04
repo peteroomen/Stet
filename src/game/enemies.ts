@@ -391,9 +391,10 @@ function chargerPlan(e: Enemy, s: GameState, _rng: Rng): Intent {
  * THE CARRIAGE RETURN: a band of whole rows, struck where the page has reached.
  *
  * Its own tile is excluded like every other sweep — the machine is what strikes,
- * not what is struck — which also leaves exactly one square of shelter beside it
- * when the band would otherwise cover everything. That is not a loophole; it is
- * the reason walking INTO the boss is the answer to the last pass.
+ * not what is struck. That is bookkeeping and NOT shelter: the excluded square is
+ * the one the boss is standing on, so nobody can stand there. Once the band
+ * covers the whole page there is nowhere at all, which is the point. The last
+ * pass is not survivable; it is the deadline.
  */
 function carriageReturnPlan(e: Enemy, s: GameState): Intent {
   const { rows } = bandAt(s.floorTurns);

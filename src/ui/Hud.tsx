@@ -36,7 +36,7 @@ export function Hud({ hud, onShowTraits }: { hud: HudData; onShowTraits: () => v
     <header className="hud">
       <div className="hud__slot">
         <span className="hud__depth">
-          Depth<em>{hud.depth}</em>
+          Page<em>{hud.depth}</em>
         </span>
       </div>
 

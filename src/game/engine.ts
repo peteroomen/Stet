@@ -177,6 +177,8 @@ function enterFloor(d: GameState, ev: Ev[]): void {
       count,
       hurt,
       d.rules.maxTraits,
+      // The hand dealt as you ARRIVE on a boss floor always carries a rare.
+      isBossFloor(d.depth),
     );
     d.rng = rng2.s;
     if (offer.length > 0) {

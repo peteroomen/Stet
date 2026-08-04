@@ -76,7 +76,7 @@ export function DeathScreen({ hud, onAgain }: { hud: Hud; onAgain: () => void })
         <p className="tagline">{hud.faded ? 'You retraced one step too many' : 'No corrections'}</p>
 
         <dl className="summary">
-          <dt>Depth</dt>
+          <dt>Page</dt>
           <dd>{hud.depth}</dd>
           <dt>Felled</dt>
           <dd>{hud.kills}</dd>

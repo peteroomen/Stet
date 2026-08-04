@@ -224,18 +224,17 @@ describe('eras and the floors that end them', () => {
       // the loop below is about the clock, not about pathfinding.
       const boss = s.enemies[0];
       const beside = boss.pos.x > 0 ? { x: boss.pos.x - 1, y: boss.pos.y } : { x: 1, y: boss.pos.y };
-      s = { ...s, player: { ...s.player, pos: beside, hp: 99, maxHp: 99, dmg: 9 } };
+      // A light stroke on purpose: a run that reaches depth 8 carries a combo
+      // ladder, and a heavy one kills the boss on the second swing however often
+      // its health is pinned back — the kill has already happened by then.
+      s = { ...s, player: { ...s.player, pos: beside, hp: 99, maxHp: 99, dmg: 1 } };
 
       const DIRS: Dir[] = ['left', 'right', 'up', 'down'];
       const widthAtStart = bandAt(s.floorTurns).width;
       let struck = 0;
 
       for (let i = 0; i < SIZE * 3 && s.screen === 'playing'; i++) {
-        const e = s.enemies[0];
-        if (!e) break;
-        // Pinned at full health, so the only thing that can end this loop is the
-        // clock — and the boss is hit whenever it is in reach.
-        s = { ...s, enemies: [{ ...e, hp: e.maxHp }] };
+        if (!s.enemies[0]) break;
 
         // Prefer a stroke, but take ANY move that spends a turn: a direction
         // that is merely a wall costs nothing and would spin this loop forever.
@@ -244,6 +243,13 @@ describe('eras and the floors that end them', () => {
         const hit = tried.find((x) => x.r.events.some((ev) => ev.t === 'bump'));
         if (hit) struck++;
         s = (hit ?? tried[0]).r.state;
+
+        // Pinned at full health AFTER the blow, so the only thing that can end
+        // this loop is the clock. Pinning before the stroke is not enough — a
+        // run that reaches depth 8 has a combo ladder, and this one killed the
+        // boss on the second swing.
+        const alive = s.enemies[0];
+        if (alive) s = { ...s, enemies: [{ ...alive, hp: alive.maxHp }] };
       }
 
       expect(struck).toBeGreaterThan(0); // it really was being interrupted

@@ -140,6 +140,18 @@ On every descent past the first you are shown three **marginalia** and take one,
 for the rest of the run. `❧` in the corner counts what you have written; tap it
 to read any of them again.
 
+**Three of them are rare**, drawn gilded, and offered on about one ordinary hand
+in four: THE LONG NIB, THE BROAD NIB and MOMENTUM — the cards that change what a
+stroke *is* rather than how much it carries. A pool where everything is equally
+likely has no shape to it; nothing is a find, and a good run differs from a bad
+one only in arithmetic.
+
+Scarcity on its own would just be a tax, so it comes with a promise: **the hand
+dealt as you arrive on a boss floor always contains one.** The spike lands where
+the game asks the most, and a boss is never lost to a run that simply never saw a
+rare. Raw damage is deliberately *not* rare — a run has to be able to find a way
+to hurt things, or a boss stops being hard and starts being unwinnable.
+
 A trait is a `Rules` delta and nothing more, which buys two things for free.
 The **preview stays honest** — `previewMoves` plays each direction through the
 real `step()`, so a card that raises your damage immediately changes a foe's

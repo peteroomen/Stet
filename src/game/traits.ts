@@ -49,6 +49,20 @@ export interface Trait {
   player?: (p: Player) => void;
   /** Cannot be taken twice. Most stack; a few would be silly or unbounded. */
   once?: boolean;
+  /**
+   * Seldom offered, and drawn differently when it is.
+   *
+   * Reserved for the cards that change what a stroke IS rather than how much it
+   * carries — reach, breadth, a turn that does not end. A pool where every card
+   * is equally likely has no shape to it: nothing is a find, and the run that
+   * went well and the run that went badly differ only in arithmetic. Rarity is
+   * what turns a hand into a moment.
+   *
+   * The compensating promise is that they are GUARANTEED on the hand you are
+   * dealt as you arrive on a boss floor, so the power spike lands exactly where
+   * the game asks the most of you rather than wherever the dice fell.
+   */
+  rare?: boolean;
 }
 
 /**
@@ -170,6 +184,7 @@ export const TRAITS: Trait[] = [
    */
   {
     id: 'long-nib',
+    rare: true,
     name: 'The Long Nib',
     line: 'Your stroke carries through to whatever stands behind.',
     axis: 'offence',
@@ -178,6 +193,7 @@ export const TRAITS: Trait[] = [
   },
   {
     id: 'broad-nib',
+    rare: true,
     name: 'The Broad Nib',
     line: 'Your stroke catches every foe you are touching.',
     axis: 'offence',
@@ -195,6 +211,7 @@ export const TRAITS: Trait[] = [
    */
   {
     id: 'momentum',
+    rare: true,
     name: 'Momentum',
     line: 'A kill you aimed at does not end your turn.',
     axis: 'tempo',
@@ -245,11 +262,25 @@ export const TRAITS: Trait[] = [
 export const TRAIT_BY_ID = new Map([...TRAITS, MEND].map((t) => [t.id, t]));
 
 /**
+ * How often an ordinary hand is allowed to contain a rare at all.
+ *
+ * Rolled once for the whole hand rather than per card, so a rare arrives as an
+ * event — "there is something good in this one" — instead of as a slot that
+ * sometimes upgrades. Roughly one hand in four.
+ */
+export const RARE_CHANCE = 0.24;
+
+/**
  * The three cards offered on a descent.
  *
  * Deliberately spread across axes where it can be: three offence cards in a row
  * is not a choice, it is a number going up. Traits already taken that cannot be
  * taken twice are dropped from the pool.
+ *
+ * `atBoss` makes the hand you are dealt on ARRIVING at a boss floor always carry
+ * a rare. That is the whole compensation for making them scarce: the spike lands
+ * where the game asks the most of you instead of wherever the dice fell, and it
+ * means a boss is never lost to a run that simply never saw one.
  */
 export function offerTraits(
   taken: string[],
@@ -257,12 +288,18 @@ export function offerTraits(
   count = 3,
   hurt = false,
   maxTraits = 0,
+  atBoss = false,
 ): Trait[] {
   // The margin is full: nothing further can be written, but a scribe can always
   // patch what is already there.
   if (maxTraits > 0 && taken.length >= maxTraits) return hurt ? [MEND] : [];
 
-  const pool = TRAITS.filter((t) => !(t.once && taken.includes(t.id)));
+  const live = TRAITS.filter((t) => !(t.once && taken.includes(t.id)));
+  const rares = live.filter((t) => t.rare);
+  // One roll for the hand, using the same `pick` the rest of the deal uses so a
+  // seeded run stays reproducible.
+  const allowRare = atBoss || pick(1000) < RARE_CHANCE * 1000;
+  const pool = allowRare ? live : live.filter((t) => !t.rare);
   const out: Trait[] = [];
   const axes = new Set<TraitAxis>();
 
@@ -272,6 +309,14 @@ export function offerTraits(
   if (hurt) {
     out.push(MEND);
     axes.add(MEND.axis);
+  }
+
+  // The boss's promise is kept first, before the axis-spreading has a chance to
+  // fill the hand with commons.
+  if (atBoss && rares.length > 0 && out.length < count) {
+    const t = rares[pick(rares.length)];
+    out.push(t);
+    axes.add(t.axis);
   }
 
   // First pass takes one from each axis it can, so a hand of three reads as

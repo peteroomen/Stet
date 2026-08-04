@@ -36,17 +36,24 @@ export function TraitOffer({
   return (
     <div className="overlay overlay--cards">
       <div className="panel">
-        <p className="cards__depth">Depth {depth}</p>
+        <p className="cards__depth">Page {depth}</p>
         <h2 className="cards__title">The margin</h2>
         <div className="cards">
           {ids.map((id, i) => {
             const t = TRAIT_BY_ID.get(id);
             if (!t) return null;
             return (
-              <button key={id} className="card" onClick={() => onTake(id)}>
+              // A rare is drawn gilded, because the one thing a player must be
+              // able to do with a scarce card is NOTICE it.
+              <button
+                key={id}
+                className={`card${t.rare ? ' card--rare' : ''}`}
+                onClick={() => onTake(id)}
+              >
                 <span className="card__key">{i + 1}</span>
                 <span className="card__name">{t.name}</span>
                 <span className="card__line">{t.line}</span>
+                {t.rare && <span className="card__rare">rare</span>}
               </button>
             );
           })}
@@ -88,7 +95,7 @@ export function TraitLedger({ ids, onClose }: { ids: string[]; onClose: () => vo
               const t = TRAIT_BY_ID.get(id);
               if (!t) return null;
               return (
-                <li key={id} className="ledger__row">
+                <li key={id} className={`ledger__row${t.rare ? ' ledger__row--rare' : ''}`}>
                   <span className="ledger__name">
                     {t.name}
                     {n > 1 && <em> ×{n}</em>}
