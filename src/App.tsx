@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isEraOpening } from './game/eras';
 import { Runtime, type Hud as HudData } from './game/runtime';
 import type { Action } from './game/types';
 import { useControls } from './input/useControls';
+import { layout } from './render/renderer';
 import type { ThemeName } from './render/theme';
+import { DevPanel, devEnabled } from './ui/Dev';
+import { EraCard } from './ui/EraCard';
 import { Hud, StateLine } from './ui/Hud';
-import { TraitLedger, TraitOffer } from './ui/Marginalia';
+import { MarginNotes, TraitLedger, TraitOffer } from './ui/Marginalia';
 import { DeathScreen, TitleScreen } from './ui/Screens';
 
 export default function App() {
@@ -18,6 +22,14 @@ export default function App() {
   /** Has this player ever held? Until they have, the hint says how. */
   const [taught, setTaught] = useState(true);
   const [ledgerOpen, setLedger] = useState(false);
+  /**
+   * The era title has been seen for this depth.
+   *
+   * Keyed by depth rather than a boolean, so the card cannot come back if React
+   * re-renders and cannot be skipped for the NEXT era by having been skipped for
+   * this one.
+   */
+  const [titled, setTitled] = useState(0);
 
   // The runtime owns the loop and pushes HUD data at most once per turn — React
   // never re-renders per frame, and never at pointer-move rate.
@@ -40,6 +52,45 @@ export default function App() {
   }, []);
 
   const screen = hud?.screen ?? 'title';
+  const depth = hud?.depth ?? 1;
+  /*
+   * The era's own page, before its hand of cards.
+   *
+   * An era opening is always a post-boss descent, so it always arrives with an
+   * offer behind it — which is exactly the right order: the place is named, and
+   * then you are asked what to write in its margin.
+   *
+   * Page one is the exception and it has to be, because `isEraOpening` is false
+   * there — depth 1 is nobody's reward, which is right for the card hand and
+   * wrong for the title. Without it the manuscript is the one era that never
+   * gets named, and the brushed hand — the slowest and the best of the three —
+   * would never once be seen. Nothing has moved yet on floor one, so a page held
+   * over a live board costs the player nothing.
+   */
+  const showEra =
+    titled !== depth &&
+    ((screen === 'choosing' && isEraOpening(depth)) || (screen === 'playing' && depth === 1));
+
+  /*
+   * Where the board's foot is, in pixels, so the margin can start under it.
+   *
+   * Measured through the same `layout()` the renderer draws from rather than
+   * guessed at in CSS. The board is a square inside a canvas of unknown
+   * proportion; there is no percentage that describes the bottom of it.
+   */
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const fit = () => {
+      const { size, oy } = layout(stage.clientWidth, stage.clientHeight);
+      stage.style.setProperty('--board-foot', `${Math.round(oy + size)}px`);
+      stage.style.setProperty('--board-head', `${Math.round(oy)}px`);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(stage);
+    return () => ro.disconnect();
+  }, []);
 
   const onDir = useCallback((act: Action) => {
     runtimeRef.current?.input(act);
@@ -130,13 +181,22 @@ export default function App() {
 
       <div className="stage" ref={stageRef}>
         <canvas className="board" ref={canvasRef} aria-label="The floor" role="img" />
+        {/*
+          The margin of the page you are playing, in the deeper of the two
+          margins — which is where a book puts its footnotes and where this page
+          had half a screen of nothing.
+        */}
+        {hud && (screen === 'playing' || screen === 'choosing') && (
+          <MarginNotes ids={hud.traits} onOpen={() => setLedger(true)} />
+        )}
         {screen === 'title' && (
           <TitleScreen best={hud?.best ?? 0} onBegin={() => runtimeRef.current?.newRun()} />
         )}
         {screen === 'dead' && hud && (
           <DeathScreen hud={hud} onAgain={() => runtimeRef.current?.newRun()} />
         )}
-        {screen === 'choosing' && hud && (
+        {showEra && <EraCard depth={depth} onDone={() => setTitled(depth)} />}
+        {screen === 'choosing' && hud && !showEra && (
           <TraitOffer
             ids={hud.offer}
             depth={hud.depth}
@@ -152,6 +212,10 @@ export default function App() {
         <StateLine hud={hud} taughtHold={taught} />
       ) : (
         <div className="state" aria-hidden="true" />
+      )}
+
+      {devEnabled() && runtimeRef.current && (
+        <DevPanel rt={runtimeRef.current} depth={depth} />
       )}
     </div>
   );

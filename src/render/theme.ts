@@ -110,6 +110,70 @@ export const TYPEWRITER: EraPalette = {
   },
 };
 
+/**
+ * III · THE WORD PROCESSOR.
+ *
+ * White bond rather than foolscap: not a paper that was made, a paper that is
+ * being SIMULATED. So the day page goes to the brightest thing in the game and
+ * the night page goes to a dark interface rather than to a candle — because a
+ * screen at night is not a page in the dark, it is the same document with the
+ * lights inverted, and pretending otherwise would be the manuscript's night
+ * palette wearing a monitor's clothes.
+ *
+ * `rule` is a UI gridline: pale grey and perfectly even, the tint a table gets
+ * when a word processor draws one. Era I's page is gridded because a scribe
+ * ruled it; era II's is ruled one way because that is what foolscap is; era
+ * III's is not ruled at all — it is a table cell boundary, which is the only
+ * line a document of this kind has for free.
+ *
+ * The danger colour stops being ink of any sort. A typewriter's red is the other
+ * half of the ribbon; a screen's red is a warning colour with nothing physical
+ * behind it, so it is brighter, cooler and completely flat.
+ *
+ * The hero keeps the rule it has had since the manuscript — the only blue on the
+ * page — and changes pigment for the third time: ground lapis, then duplicating
+ * ink, then the blue an interface uses when it means "this one". Same rule,
+ * right chemistry, three times over.
+ *
+ * The gilding has nowhere left to go. Era I's margin is a GROWN thing (vine,
+ * volutes), era II's is a MADE one (pinstripe, screw-heads), and this one is
+ * neither: it is DRAWN BY SOFTWARE — a ruler with tab stops and a scrollbar. So
+ * `leaf` and `leafDeep` stop being a metal and become chrome, the grey a widget
+ * is painted in, with the thumb a shade darker than its track.
+ */
+export const WORD_PROCESSOR: EraPalette = {
+  day: {
+    paper: '#FFFFFF',
+    paperDeep: '#DFE3E8',
+    grain: '#8A929C',
+    rule: '#D8DDE4',
+    ink: '#0B0D10',
+    inkSoft: '#59626D',
+    blood: '#D93025',
+    danger: '#D93025',
+    gold: '#7A838F',
+    ghost: '#AAB2BC',
+    hero: '#1A73E8',
+    leaf: '#C3CAD3',
+    leafDeep: '#8B95A1',
+  },
+  night: {
+    paper: '#0E1117',
+    paperDeep: '#04060A',
+    grain: '#9BA3AE',
+    rule: '#232A34',
+    ink: '#E8EDF3',
+    inkSoft: '#8B94A0',
+    blood: '#FF6B5E',
+    danger: '#FF6B5E',
+    gold: '#8891A0',
+    ghost: '#5A626D',
+    hero: '#5AA0FF',
+    leaf: '#39424E',
+    leafDeep: '#232A34',
+  },
+};
+
 /** The theme a floor is actually drawn in: the lighting, with the era laid over it. */
 export function themeFor(name: ThemeName, palette: EraPalette): Theme {
   return { ...THEMES[name], ...(palette[name] ?? {}) };
@@ -156,10 +220,20 @@ export const THEMES: Record<ThemeName, Theme> = {
  * Takes the era's palette too, or the chrome keeps wearing era I while the board
  * has moved on — the HUD, the cards and the state line all read these vars.
  */
-export function applyThemeVars(name: ThemeName, palette: EraPalette = {}): void {
+export function applyThemeVars(name: ThemeName, palette: EraPalette = {}, era = 'manuscript'): void {
   const t = themeFor(name, palette);
   const root = document.documentElement;
   root.dataset.theme = name;
+  /*
+   * The era, for the chrome's typeface.
+   *
+   * The board changes hand on a descent and the running head did not, so the
+   * page was set in a Renaissance serif while the thing on it was being struck
+   * by a machine. A data attribute rather than another CSS variable written from
+   * here, because what changes is a whole family of rules — face, tracking,
+   * case — and those belong in the stylesheet next to each other.
+   */
+  root.dataset.era = era;
   for (const [k, v] of Object.entries(t)) root.style.setProperty(`--${k}`, v);
   document
     .querySelector('meta[name="theme-color"]')

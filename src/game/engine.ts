@@ -1,5 +1,6 @@
 import {
   ENEMY_STATS,
+  displaces,
   pageAt,
   intentThreatens,
   makeEnemy,
@@ -10,7 +11,7 @@ import {
 } from './enemies';
 import { eraAt, isAfterBoss, isBossFloor } from './eras';
 import { MAX_ENEMIES, generateFloor } from './floors';
-import { DIR_VEC, ORTHO, add, allTiles, chebyshev, eq, inBounds } from './grid';
+import { DIR_VEC, ORTHO, add, allTiles, chebyshev, dirBetween, eq, inBounds } from './grid';
 import { Rng, randomSeed } from './rng';
 import { SHIPPED, type Rules } from './rules';
 import { TRAIT_BY_ID, applyTraitRules, offerTraits } from './traits';
@@ -358,6 +359,44 @@ function strike(e: Enemy, d: GameState, from: Vec, at: Vec, ev: Ev[]): void {
 }
 
 /**
+ * Is there anywhere to insert?
+ *
+ * A push moves you onto a tile the page is not already using, and it is
+ * deliberately strict about what counts as used: walls, blots, bodies, the way
+ * down, and anything lying on the floor. Being shoved onto the stairs would read
+ * as a descent you did not take, and being shoved onto a vial would either pick
+ * it up in the enemy phase or leave you standing on something you cannot reach —
+ * both worse than the push simply not happening.
+ *
+ * When there is nowhere, nothing moves. You still took the blow.
+ */
+function openPage(d: GameState, v: Vec): boolean {
+  if (!inBounds(v)) return false;
+  if (isBlot(d, v)) return false;
+  if (d.enemies.some((e) => eq(e.pos, v))) return false;
+  if (d.items.some((i) => eq(i.pos, v))) return false;
+  if (eq(v, d.stairs)) return false;
+  return true;
+}
+
+/**
+ * The insertion. What was on the page is pushed one tile along the line it was
+ * struck along — and what was on the page is you.
+ *
+ * Its own event because nothing else takes your position away, and because the
+ * hero has to be seen travelling during the ENEMY phase rather than appearing on
+ * a tile they never walked to.
+ */
+function insert(e: Enemy, d: GameState, from: Vec, ev: Ev[]): void {
+  const dir = dirBetween(from, d.player.pos);
+  const to = add(d.player.pos, DIR_VEC[dir]);
+  if (!openPage(d, to)) return;
+  const was: Vec = { ...d.player.pos };
+  d.player.pos = { ...to };
+  ev.push({ t: 'shove', phase: 'e', id: e.id, kind: e.kind, from: was, to: { ...to }, dir });
+}
+
+/**
  * Execute one enemy's committed intent.
  *
  * The intent was planned last turn against where you stood then, and it is NOT
@@ -447,6 +486,22 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
     return;
   }
 
+  /*
+   * A selection. While the block is being held down it is drawn and nothing
+   * more; on the turn it releases, every tile inside it is deleted at once.
+   *
+   * The mark turn is deliberately a turn in which the machine does NOTHING, and
+   * that is not a wasted beat — it is the warning an area needs and a line does
+   * not. One step is enough to leave a row; it is not enough to leave a
+   * three-by-three, so the shape has to be on the page before the blow is.
+   */
+  if (intent.kind === 'select') {
+    if (intent.release && intent.tiles.some((v) => eq(v, d.player.pos))) {
+      strike(e, d, e.pos, d.player.pos, ev);
+    }
+    return;
+  }
+
   if (intent.kind === 'hold' || intent.path.length === 0) {
     /*
      * A STRIDER still earns its beat by standing there.
@@ -472,6 +527,9 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
     if (eq(next, d.player.pos)) {
       // Doubled while you are mid-swing. This is the whole cost of committing.
       strike(e, d, cur, next, ev);
+      // A CURSOR does not only mark the page, it edits it: you are pushed one
+      // tile further along the line it struck along.
+      if (displaces(e.kind)) insert(e, d, cur, ev);
       break; // strikes from where it stands; never enters your tile
     }
 
@@ -692,7 +750,22 @@ export function step(state: GameState, action: Action): StepResult {
 
   // --- Enemy phase --------------------------------------------------------
   d.chain = 0; // a turn is resolving; the momentum window closes here
-  for (const e of d.enemies) execIntent(e, d, ev);
+  /*
+   * Anything that MOVES you acts last.
+   *
+   * Otherwise a CURSOR could push you into a block that a SELECTION was about to
+   * delete, or out of one it was, purely on the order the two happened to be
+   * sitting in the array — and the player has no way to read that order off the
+   * board. Displacers going last states the fairer of the two rules and states
+   * it once: you can be pushed into a shape that has not gone off yet, which is
+   * frightening and readable, and never into one that already has.
+   *
+   * A stable partition, so eras I and II — which have nothing that displaces —
+   * run in exactly the order they always did.
+   */
+  const acting = d.enemies.filter((e) => !displaces(e.kind));
+  for (const e of d.enemies) if (displaces(e.kind)) acting.push(e);
+  for (const e of acting) execIntent(e, d, ev);
 
   // FLOW: you stepped off a tile something had committed to, and nothing landed.
   // Deliberately requires that the tile was ACTUALLY aimed at — walking around an

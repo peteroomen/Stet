@@ -1,4 +1,12 @@
-import { blobPath, brushStroke, hash3, inkStroke, strikeStroke, type Pt } from './ink';
+import {
+  blobPath,
+  brushStroke,
+  hash3,
+  inkStroke,
+  rasterStroke,
+  strikeStroke,
+  type Pt,
+} from './ink';
 import type { EnemyKind, ItemKind } from '../game/types';
 
 /**
@@ -9,7 +17,7 @@ import type { EnemyKind, ItemKind } from '../game/types';
  * only the instrument changes. That is the whole payoff of the era system, and
  * it is why this is a mode on the renderer rather than a second set of glyphs.
  */
-export type Mark = 'brush' | 'nib' | 'type';
+export type Mark = 'brush' | 'nib' | 'type' | 'raster';
 
 /**
  * Every actor is a set of polylines in unit space (roughly -1..1), inked at draw
@@ -133,6 +141,156 @@ export const ENEMY_GLYPHS: Record<EnemyKind, GlyphDef> = {
     // The point above it. Small and square: struck, not spattered.
     dots: [[0.12, -0.3, 0.15]],
     weight: 1.15,
+  },
+  /*
+   * THE CURSOR — the I-beam, and the smallest silhouette of era III.
+   *
+   * Chaff has to say "chaff" before it says anything else, so it is drawn tiny
+   * like the SEMICOLON is, and it is the era's letterform for the same reason
+   * the semicolon is era II's: in a word processor's world the vermin are the
+   * interface. Two serifs and a stem — the pointer every reader of this era has
+   * spent a life following across a page.
+   */
+  cursor: {
+    paths: [
+      [
+        [-0.26, -0.5],
+        [0.26, -0.5],
+      ],
+      [
+        [0, -0.5],
+        [0, 0.5],
+      ],
+      [
+        [-0.26, 0.5],
+        [0.26, 0.5],
+      ],
+    ],
+    weight: 1.1,
+  },
+  /*
+   * THE SELECTION — a block with a drag handle.
+   *
+   * Deliberately the only silhouette in the game that is a plain rectangle, and
+   * that is the reading: it is not a creature, it is a REGION. Everything else on
+   * the page has a body and a direction; this has corners. The handle at the
+   * bottom right is what says it is being dragged rather than merely drawn, and
+   * it is the one asymmetry — the same trick the drollery uses, at chaff scale.
+   *
+   * Drawn as MARCHING ANTS — eight short runs with gaps between them — and the
+   * render grid is what insisted. A solid box with bars inside it was very
+   * nearly the WARDEN, which is a barred block, and two kinds that read alike at
+   * a glance is the one failure a silhouette cannot have. A broken edge says
+   * selection and cannot be mistaken for a body.
+   */
+  selection: {
+    paths: [
+      // Top edge, in two runs.
+      [
+        [-0.74, -0.62],
+        [-0.24, -0.62],
+      ],
+      [
+        [0.24, -0.62],
+        [0.74, -0.62],
+      ],
+      // Right.
+      [
+        [0.74, -0.62],
+        [0.74, -0.16],
+      ],
+      [
+        [0.74, 0.2],
+        [0.74, 0.62],
+      ],
+      // Bottom.
+      [
+        [0.74, 0.62],
+        [0.24, 0.62],
+      ],
+      [
+        [-0.24, 0.62],
+        [-0.74, 0.62],
+      ],
+      // Left.
+      [
+        [-0.74, 0.62],
+        [-0.74, 0.2],
+      ],
+      [
+        [-0.74, -0.16],
+        [-0.74, -0.62],
+      ],
+    ],
+    // The drag handle, gripped at the corner it is being pulled by.
+    dots: [[0.74, 0.62, 0.22]],
+    weight: 1.05,
+  },
+  /*
+   * THE AUTOCOMPLETE — the suggestion, and the only glyph that points at
+   * something other than itself.
+   *
+   * A caret over a run of dots: the ellipsis a machine puts where it thinks the
+   * rest of your word goes. It is a reacher like the TYPEBAR and, like it, it
+   * never moves — so the shape says reach rather than travel, and the dots run
+   * AWAY from the caret because what it threatens is out in front of you.
+   */
+  autocomplete: {
+    paths: [
+      [
+        [-0.62, 0.1],
+        [-0.28, -0.5],
+        [0.06, 0.1],
+      ],
+    ],
+    dots: [
+      [0.3, 0.1, 0.12],
+      [0.58, 0.1, 0.12],
+      [0.86, 0.1, 0.12],
+    ],
+    weight: 1.05,
+  },
+  /*
+   * THE SELECT ALL — the whole document, held down.
+   *
+   * Built out of the SELECTION's own silhouette so the boss reads as the same
+   * family grown up: the same block and the same handle, plus the page it has
+   * taken drawn inside it and the caret still blinking in the corner it started
+   * from. Asymmetric on purpose — the DROLLERY and the CARRIAGE RETURN are both
+   * lopsided for the same reason, because a shape that is not mirror-balanced
+   * reads as WRONG before it reads as anything at all.
+   */
+  selectAll: {
+    paths: [
+      [
+        [-0.9, -0.78],
+        [0.9, -0.78],
+        [0.9, 0.78],
+        [-0.9, 0.78],
+        [-0.9, -0.78],
+      ],
+      // The lines of the document, taken one after another in reading order —
+      // and the last of them short, because that is where the drag has got to.
+      [
+        [-0.6, -0.36],
+        [0.6, -0.36],
+      ],
+      [
+        [-0.6, 0],
+        [0.6, 0],
+      ],
+      [
+        [-0.6, 0.36],
+        [0.06, 0.36],
+      ],
+      // The caret it dragged from, standing in the corner it started at.
+      [
+        [-0.9, -0.98],
+        [-0.9, -0.5],
+      ],
+    ],
+    dots: [[0.9, 0.78, 0.2]],
+    weight: 1.3,
   },
   rat: {
     paths: [
@@ -606,6 +764,35 @@ function paintGlyph(ctx: CanvasRenderingContext2D, def: GlyphDef, o: DrawOpts): 
         wear: 0.38,
       });
     });
+  } else if (o.mark === 'raster') {
+    /*
+     * The pixel is the stroke width, near enough. A raster line covers about one
+     * cell across, so quantising finer than the width thins the whole hand — at
+     * two thirds, the render grid showed era III's actors reading a third
+     * lighter than era II's on the same page, which is a weight difference
+     * masquerading as an era difference.
+     *
+     * And at that weight it takes the BRUSH silhouettes rather than the nib ones,
+     * which is not what it looks like it should do. `brushPaths` exists because a
+     * wet mark is twice as wide and close parallel detail merges into a block —
+     * and quantising does exactly the same thing for exactly the same reason. The
+     * grid was blunt about it: at full width the WARDEN's three body bars closed
+     * up into a solid rectangle and it stopped reading as barred, which is the
+     * one thing that silhouette has to say. Two bars, spread wider, survive being
+     * snapped to a grid just as they survive a brush.
+     */
+    const w = o.size * 0.075 * (def.weight ?? 1) * (o.widthScale ?? 1);
+    const px = Math.max(1, w * 0.95);
+    (def.brushPaths ?? def.paths).forEach((path) => {
+      rasterStroke(ctx, path.map(map), {
+        color: o.color,
+        width: px,
+        alpha,
+        // One grid for the whole glyph, centred on its own origin, so every
+        // stroke in a character steps in the same places.
+        origin: [-px / 2, -px / 2],
+      });
+    });
   } else if (o.mark === 'brush') {
     // 1.85x read as a blot rather than a brush mark — at that weight a 5x5 board
     // of actors is mostly ink, and the silhouettes stop being distinguishable at
@@ -646,9 +833,9 @@ function paintGlyph(ctx: CanvasRenderingContext2D, def: GlyphDef, o: DrawOpts): 
     ctx.save();
     ctx.globalAlpha = alpha * ribbon;
     ctx.fillStyle = o.color;
-    if (o.mark === 'type') {
-      // A struck dot is a slug face, not a blob. Square, like everything else
-      // a machine puts on a page.
+    if (o.mark === 'type' || o.mark === 'raster') {
+      // A struck dot is a slug face and a rendered one is a pixel. Neither is a
+      // blob: square, like everything else a machine puts on a page.
       const s = r * half * 1.7;
       ctx.fillRect(dx * half - s / 2, dy * half - s / 2, s, s);
     } else {

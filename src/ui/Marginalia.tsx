@@ -1,6 +1,30 @@
 import { useEffect } from 'react';
-import { eraAt, eraNumeral, isEraOpening } from '../game/eras';
+import { splitKeywords } from '../game/keywords';
 import { TRAIT_BY_ID } from '../game/traits';
+
+/**
+ * A line of card copy, with its jargon set apart.
+ *
+ * The rule these exist to serve is in `game/keywords.ts`: a card may use a
+ * jargon word only if the word is defined in one place, and a word set apart
+ * must be a word you can find the meaning of by touching it. So this is the only
+ * place copy is rendered, and it carries the definition with it.
+ */
+export function Copy({ line }: { line: string }) {
+  return (
+    <>
+      {splitKeywords(line).map((run, i) =>
+        run.keyword ? (
+          <b key={i} className="kw" title={run.keyword.means}>
+            {run.text}
+          </b>
+        ) : (
+          <span key={i}>{run.text}</span>
+        ),
+      )}
+    </>
+  );
+}
 
 /**
  * The card hand, and the ledger of what you have already taken.
@@ -21,8 +45,6 @@ export function TraitOffer({
   depth: number;
   onTake: (id: string) => void;
 }) {
-  const opening = isEraOpening(depth);
-
   // 1 / 2 / 3 take a card, so the whole game stays keyboard operable.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -40,22 +62,13 @@ export function TraitOffer({
     <div className="overlay overlay--cards">
       <div className="panel">
         {/*
-          Name the era on the hand where you enter it.
-          
-          This was first drawn on the BOARD, and it was never once visible: the
-          first floor of an era is by definition the floor after a boss, so the
-          card hand is always up over the top of it. The hand is the ceremony of
-          a descent anyway — naming the era here costs nothing and cannot be
-          missed.
+          The era used to be named here, and it has now moved to a page of its
+          own — see `EraCard`. It was visible on the hand, which was already an
+          improvement on being drawn under it, but a subtitle over three buttons
+          is not a place arriving. What is left here is the folio, which is what
+          the top of a page says.
         */}
-        {opening ? (
-          <p className="cards__era">
-            <span className="cards__eraNum">{eraNumeral(depth)}</span>
-            {eraAt(depth).name}
-          </p>
-        ) : (
-          <p className="cards__depth">Page {depth}</p>
-        )}
+        <p className="cards__depth">Page {depth}</p>
         <h2 className="cards__title">The margin</h2>
         <div className="cards">
           {ids.map((id, i) => {
@@ -71,7 +84,9 @@ export function TraitOffer({
               >
                 <span className="card__key">{i + 1}</span>
                 <span className="card__name">{t.name}</span>
-                <span className="card__line">{t.line}</span>
+                <span className="card__line">
+                  <Copy line={t.line} />
+                </span>
                 {t.rare && <span className="card__rare">rare</span>}
               </button>
             );
@@ -79,6 +94,51 @@ export function TraitOffer({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * What you have taken, written in the margin of the page you are playing.
+ *
+ * This is the answer to *"I don't see the cards I picked anywhere"*, and the
+ * answer was not a better modal. They were always in the game — behind an
+ * unlabelled `❧ 2` in the corner — and a build you have to go and look up is a
+ * build you play the whole run without. They are called marginalia; the page has
+ * a margin; the margin was empty.
+ *
+ * Set as annotations rather than as a stat block: the name in the era's own
+ * face, the rule after it in a lighter weight, a hairline between. It reads as
+ * something written on the page because that is what it is.
+ *
+ * Two things keep it honest. Repeats are counted rather than repeated, because a
+ * margin with Whetstone in it three times reads as a bug. And it is still a
+ * button — the full text and the keyword glosses live in the ledger, and this is
+ * the standing reminder rather than a replacement for it.
+ */
+export function MarginNotes({ ids, onOpen }: { ids: string[]; onOpen: () => void }) {
+  if (ids.length === 0) return <div className="notes notes--empty" aria-hidden="true" />;
+
+  const counts = new Map<string, number>();
+  for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+
+  return (
+    <button className="notes" onClick={onOpen} aria-label="What you have taken">
+      {[...counts].map(([id, n]) => {
+        const t = TRAIT_BY_ID.get(id);
+        if (!t) return null;
+        return (
+          <span key={id} className={`note${t.rare ? ' note--rare' : ''}`}>
+            <span className="note__name">
+              {t.name}
+              {n > 1 && <em> ×{n}</em>}
+            </span>
+            <span className="note__line">
+              <Copy line={t.line} />
+            </span>
+          </span>
+        );
+      })}
+    </button>
   );
 }
 
@@ -119,7 +179,9 @@ export function TraitLedger({ ids, onClose }: { ids: string[]; onClose: () => vo
                     {t.name}
                     {n > 1 && <em> ×{n}</em>}
                   </span>
-                  <span className="ledger__line">{t.line}</span>
+                  <span className="ledger__line">
+                    <Copy line={t.line} />
+                  </span>
                 </li>
               );
             })}

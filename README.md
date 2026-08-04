@@ -232,25 +232,33 @@ then rendered. Handmade warmth to mechanical precision to cold light, and each
 era strips something away: era I has variable pressure, era II has none but keeps
 physical misregistration, era III has neither.
 
-| | I · The Manuscript | II · The Typewriter | III · The Terminal |
+| | I · The Manuscript | II · The Typewriter | III · The Word Processor |
 |---|---|---|---|
 | Depths | 1–4 | 5–8 | 9–12 |
-| Surface | cream vellum, gilded | foolscap, blue rule, steel margin | black, phosphor glow |
-| Mark | loaded brush | struck typebar | raster glyph |
-| Ink | iron gall + gold | bichrome ribbon, black / red | green or amber |
-| Native kinds | — | TYPEBAR, CARRIAGE | — |
-| Boss | THE DROLLERY | THE CARRIAGE RETURN | — |
-| Threatens | tiles | **lines** | — |
+| Surface | cream vellum, gilded | foolscap, blue rule, brass margin | white bond, UI grid, chrome margin |
+| Mark | loaded brush | struck typebar | quantised raster |
+| Ink | iron gall + gold | bichrome ribbon, black / red | flat values, system blue |
+| Native kinds | — | TYPEBAR, CARRIAGE | SELECTION, AUTOCOMPLETE |
+| Chaff | RAT | SEMICOLON | CURSOR |
+| Boss | THE DROLLERY | THE CARRIAGE RETURN | THE SELECT ALL |
+| Threatens | tiles | **lines** | **areas** |
 
-**I and II are built.** See [`docs/next-era.md`](docs/next-era.md) for the
-handoff: what an era is made of now, the unresolved three-eras-or-four question,
-and the list of things the harness overturned while era II was being built.
+**All three are built.** See [`docs/next-era.md`](docs/next-era.md) for the
+handoff: what an era is made of now, what the harness overturned while each was
+being built, and what era IV would have to answer to be worth building.
 
-III still needs a mark-making system of its own — that is
-the bulk of that work, and it wants a render grid rather than a live board, the
-same way the brush numbers were chosen (`npm run shots:type`). Past depth 8 the
-descent repeats the typewriter; the threat budget and the marginalia still
-escalate, so a deep run is harder without pretending to be somewhere new.
+Era III is where the ladder runs out of things to strip. Era I has variable
+pressure; era II has none but is still a physical object landing on physical
+paper, so it keeps misregistration and an unevenly inked ribbon; era III has
+neither. A rendered glyph lands exactly where it is put, at exactly one value,
+every time — so the only property left to carry the hand is **resolution**, and
+`rasterStroke()` does not draw a line at all. It walks the polyline and fills the
+pixels it passes through, snapped to a fixed grid, which is why a diagonal comes
+out as a staircase and why nothing in the era jitters.
+
+Past depth 12 the descent repeats the word processor; the threat budget and the
+marginalia still escalate, so a deep run is harder without pretending to be
+somewhere new.
 
 An era owns three things, and adding one is now a data change plus a mark mode:
 
@@ -280,10 +288,20 @@ broke the marks into dashes. A worn ribbon *under-inks*, it does not punch holes
 The margin is era-owned too, and recolouring is not enough: a gilt vine in grey
 is not a typed page, it is a manuscript with the lights off. The gilding's
 elegance was never the foliage, it was a **bright rule over a shadowed one** —
-which is what reads as metal — so era II keeps exactly that in steel and adds one
+which is what reads as metal — so era II keeps exactly that in brass and adds one
 mark, the red margin stop. A first version added tab ticks across the head and
 was correctly called crowded. Blots follow the same principle: a scribe spills
 ink, a typist strikes a passage out, so era II blocks a tile with `xxxx`.
+
+Era I's margin is a **grown** thing — a vine, leaves, volutes scrolling into the
+corners. Era II's is a **made** one — pinstriping and turned screw-heads, because
+a machine of that period was lined out by hand and bolted together. There is
+nowhere for a third material to go, so era III's is not a material: it is **drawn
+by software**. A ruler across the head with a tick at every tile and an indent
+marker on it, and a scrollbar down the side with a thumb on it. It is the first
+margin in the game that carries information, which is the honest thing for that
+era to do — a word processor's margins are where the document talks about itself.
+Nothing in it wobbles or boils, and that absence *is* the era.
 
 **This is structure, not decoration.** Every enemy kind used to unlock by depth
 7, which meant depths 8 and beyond were the same game forever — exactly why the
@@ -350,6 +368,73 @@ does **not** stop the paper closing. A boss whose clock you can pause by hitting
 it is a boss you can stall forever — the exact failure the drollery's two extra
 rules exist to patch.
 
+**THE SELECT ALL** waits on page 12 and asks era III's own question at the scale
+of the whole document. It does not move and it does not chase: it **drags**.
+Every turn the selection grows a few tiles further through the page in reading
+order, and when it has taken all it means to take, everything inside it is
+deleted at once and the drag starts again from a different corner. Nothing is
+struck while the block is growing, so the early turns of a pass are yours to
+fight in — and the clear paper shrinks under you the whole time.
+
+Era II's boss is a travelling lane and the answer is to be *on* it; stating that
+as an area would have been the same fight drawn square. This one asks a route
+instead of a step: not "which line is safe" but "where will the block have got
+to, and can I still be outside it". The corner rotates every pass, so the clear
+paper is at the foot of the page on one pass and at its head on the next — era
+II's shelter converges on the machine, and this one makes you cross.
+
+Each pass keeps one row fewer than the last and runs faster, so by the sixth the
+drag takes the whole page and there is nowhere at all. That is about turn
+twenty-six, in the same country as the carriage return's twenty-five, and like it
+it is read off `floorTurns` alone: interrupting the machine cancels the blow you
+were about to eat and never stops the page being selected.
+
+### The page around the board
+
+The board is a square, and a phone is not — so half of every screen was blank
+cream. What went into it is what a book puts there.
+
+A **running head** at the top: the era's name in small caps, the folio beside it,
+a hairline rule under it. A **footnote** at the foot, under its own rule, holding
+the one line about the turn you are in. And in the deeper of the two margins,
+**the marginalia you have taken** — name, rule, hairline between, wrapped rather
+than truncated. They were always in the game, behind an unlabelled `❧ 2` in the
+corner, and *"I don't see the cards I picked anywhere"* is what a build you have
+to go and look up actually costs. They are called marginalia; the page has a
+margin; the margin was empty.
+
+All of it is set in the era's own face — the serif, then the monospace, then the
+UI sans — off a `data-era` attribute, so the furniture changes hand when the
+board does.
+
+Two bugs came out of measuring rather than eyeballing it. A canvas is a replaced
+element whose width/height *attributes* are an intrinsic size, and the renderer
+sets those from `clientWidth`; in the normal flow that closes a loop, and the
+canvas had settled at **411×878 inside a 371-wide page**, with `overflow: hidden`
+cutting the difference off the right. And a grid item's `min-width` is `auto`, so
+the row of nowrap readouts in the HUD was sizing the whole column. *That* is what
+"the gold ornamentation runs off the screen" was: not an ornament too big for the
+page, a page too big for the screen.
+
+The board is also inset to 92% of the shorter side, because the illuminated band
+lives outside the play frame by design and needs somewhere to be. It costs about
+five pixels a cell, out of half a screen of reclaimed height.
+
+### The era, on a page of its own
+
+An era is the only thing in the game that changes what the game *is*, so arriving
+in one gets a page to itself — and on that page the name is not set, it is
+**written**, a letter at a time, by whatever writes that era. A brush lays each
+letter down under a left-to-right wipe, so you watch the stroke travel. A
+typewriter does not travel at all: each letter is *struck*, arriving whole, a
+hair off its place and off square, at whatever the ribbon had left. A word
+processor is instant and exact, with a block caret waiting at the end.
+
+Each letter fires `sfx.step()`, which is already branched per era, so the writing
+sounds like the writing. Page one names the manuscript — `isEraOpening` is false
+there, which is right for the card hand and would have left one era in three
+never named and the best of the three hands never seen.
+
 ## The floor
 
 Clear every foe to break the wax seal on the stairs. The stairs are visible from
@@ -380,10 +465,35 @@ stall the spill was built to prevent.
 | `;` | **Semicolon** | 1 | 1 | 1 | Era II's chaff. Walks at you, and punctuates once it is beside you. |
 | `⊥` | **Typebar** | 2 | 1 | 1 | Never moves. Strikes the column you stand in, a turn later. |
 | `▤` | **Carriage** | 3 | 2 | 2 | Steps toward you, then sweeps its whole row. |
+| `I` | **Cursor** | 1 | 1 | 1 | Era III's chaff. Walks onto you, and its blow pushes you one tile on. |
+| `⌗` | **Selection** | 3 | 2 | 2 | Marks your tile, opens the block out, then deletes it. |
+| `⌃` | **Autocomplete** | 2 | 1 | 1 | Strikes the two tiles ahead of your last step. Turn, or stop. |
 
-The first four are era I and carry into every era after it. The last two are era
-II's own, and they are the reason it is a different place: era I threatens
-**tiles**, so every dodge in it is a sidestep. A machine threatens **lines**.
+The first four are era I and carry into every era after it. The rest are their
+own era's, and they are the reason each is a different place rather than a
+reskin. Era I threatens **tiles**, so every dodge in it is a sidestep. A machine
+threatens **lines**. A word processor threatens **areas** — and an area is the
+first thing in the game that one step cannot answer, because from the middle of a
+three-by-three, one step is still inside it.
+
+That is why THE SELECTION takes three beats and not two. It marks the tile you
+are standing on; the next turn the block opens out around the mark and is drawn
+but not struck; the turn after, it is deleted. Two beats was built first and the
+harness threw it out: measured over forty 3-ply runs past depth 9, that version
+did **54% of the entire era's damage** on a sixth of the board-time of a WARDEN —
+about twelve times the damage per turn on the page of anything else in the game.
+One move is enough to leave a row and is not enough to leave a block. The extra
+beat halves the rate and makes the dodge honest, and it reads better too, because
+the turn it buys is the turn the *shape* is on the page rather than just a dot.
+
+THE AUTOCOMPLETE is its opposite half. It aims at your **momentum** — the two
+tiles ahead of the direction you last moved — and nothing else in the game reads
+that. A selection says *leave*, and the fastest way to leave anything is a
+straight line; this punishes exactly that line. Together they ask you to move and
+to keep changing your mind. It acts every turn rather than every other, and the
+harness moved that number too: on alternate beats it did 3.8% of the era's damage
+and was background. A rule about how you may move is not a rule if it only
+applies half the time.
 
 **The era is audible, too.** Four sounds branch on the hand — the step, the
 strike, the interrupt and the spill — and the floor drone changes timbre with
@@ -394,6 +504,16 @@ off the slug, and a thud through the platen behind it. The interrupt becomes key
 jamming, the spill becomes the machine typing by itself, and the bowed drone
 becomes a motor. Only four branch: a palette where nothing is constant stops
 being a palette.
+
+Era III turns the same four inside out. Its step is a key bottoming out on a
+membrane with a synthesised blip under it, because on a screen the mark makes no
+sound and the machine has to make one for it. Its strike is not a mark being
+*made* at all — a rendered page changes by having something taken off it, so it
+is a short downward sweep with a click on the front: the noise an interface makes
+when a thing that was there is not there any more. The interrupt becomes an
+operation cancelled, the spill becomes content pasted in, and the drone becomes a
+triangle wave under a tighter filter — a power supply rather than a motor, since
+a screen is not doing any work you can hear.
 
 `npm run check:audio` fires every event in **every era**. It cannot tell you
 whether any of it sounds good — only a person can — but it proves each node graph
@@ -410,7 +530,23 @@ parts, so what you learned in the first four floors keeps paying.
 **Chaff is never shared**, because chaff is the most common thing on a board and
 therefore the thing that most decides where you feel you are. Era II's is THE
 SEMICOLON — in a typewriter's world the vermin are the punctuation — and it is
-what the spill draws there.
+what the spill draws there. Era III's is THE CURSOR, on the same joke: in a word
+processor's world the vermin are the interface.
+
+The cursor is the only thing in the game that **moves you**. It walks onto you
+like any chaff and does a rat's single point of damage, and then it inserts —
+what was on the page is pushed one tile along the line it was struck along. It
+cannot kill you on its own; it can put you inside a SELECTION, which is the whole
+reason era III's vermin are worth their own kind. Nothing moves if there is
+nowhere to insert: walls, blots, bodies, items and the stairs all block it, and
+then you have simply taken the blow.
+
+Anything that displaces you **acts last** in the enemy phase. Otherwise a cursor
+could push you into a block a selection was about to delete, or out of one, purely
+on the order the two happened to be sitting in an array — and nothing on the board
+could tell you which. Displacers last states the fairer rule once: you can be
+pushed into a shape that has not gone off yet, which is frightening and readable,
+and never into one that already has.
 
 It first alternated step and strike like the carriage, and the harness killed
 that outright: a thing that never enters your tile and only threatens on
@@ -458,6 +594,21 @@ compound: a layer is spent once, and a heal is spent at once.
 
 The margin holds six marks, and nothing in the pool stacks except the combo
 ladder — so six marks have to be six ideas rather than the same one six times.
+
+**A card may use a jargon word only if the word is defined in one place.** The
+set is closed and lives in `game/keywords.ts` — *stroke*, *break*, *combo*,
+*mid-swing*, *hold*, *gesso*, *spill*, *dodge* — and a marked word is set in
+small caps carrying its own definition on touch. That is what makes "your next
+**stroke** carries +2 and always **breaks**" fair rather than obscure: it is
+shorter and more exact than any paraphrase, and every word in it is one you can
+find out the meaning of without leaving the card.
+
+The rule came out of FOOLSCAP, which was called Foolscap and gave you Gesso —
+two obscure words for one mechanic, reported exactly that way: *"explain
+foolscap/gesso, it's a mystery to me"*. Flavour you have to look up is a card the
+player cannot evaluate, and a choice you cannot evaluate is not a choice. Three
+tests keep the vocabulary honest: every marked word resolves, every defined word
+is used by some card, and every line fits in seventy-four characters.
 
 ---
 
@@ -750,9 +901,20 @@ turn, so the rules looked perfectly fair while the game ate your health.
 
 ## Debugging
 
-`window.__stet` exposes the live runtime. `__stet.jumpTo(9)` rebuilds the run at
-depth 9 (a warden takes seven floors to reach honestly, which is far too slow a
-loop for tuning how one looks and sounds); `__stet.kill()` ends the run.
+**`?dev=1`** puts a cheat panel in the corner: jump to any era or its boss, step
+the page up and down, clear a floor, add hearts, gesso or damage, and take any
+marginalia outright. Behind a query parameter rather than a keystroke or a build
+flag — a keystroke is something a player finds by accident, and a build flag
+means the thing you are testing is not the thing you ship.
+
+Everything in it goes through the runtime rather than editing state in place, so
+a cheated board is still a board the engine agrees with: the preview is
+recomputed and the HUD is pushed exactly as they are on a real turn.
+
+`window.__stet` exposes the live runtime for the same work from a console.
+`__stet.jumpTo(9)` rebuilds the run at depth 9 (a warden takes seven floors to
+reach honestly, which is far too slow a loop for tuning how one looks and
+sounds); `__stet.kill()` ends the run.
 
 `node scripts/shots.mjs` drives the built game in a real browser and captures the
 states worth looking at, failing on any console error.

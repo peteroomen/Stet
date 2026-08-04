@@ -3,7 +3,7 @@
  *
  *   node scripts/type-shots.mjs   →  shots/type-lab.png
  *
- * Every actor, drawn in all three hands, on each era's own paper. Picking a
+ * Every actor, drawn in all four hands, on each era's own paper. Picking a
  * mark-making system by eye on a live board does not work — the marks are small,
  * half of them are moving, and the failure mode (a silhouette that has stopped
  * reading as itself) is exactly what a busy screen hides. This is the same
@@ -22,12 +22,16 @@ const DEFS: [string, GlyphDef][] = [
   ['hero', HERO],
   ['rat', ENEMY_GLYPHS.rat],
   ['semicolon', ENEMY_GLYPHS.semicolon],
+  ['cursor', ENEMY_GLYPHS.cursor],
   ['stalker', ENEMY_GLYPHS.stalker],
   ['charger', ENEMY_GLYPHS.charger],
   ['warden', ENEMY_GLYPHS.warden],
   ['typebar', ENEMY_GLYPHS.typebar],
   ['carriage', ENEMY_GLYPHS.carriage],
+  ['selection', ENEMY_GLYPHS.selection],
+  ['autocomplete', ENEMY_GLYPHS.autocomplete],
   ['drollery', ENEMY_GLYPHS.drollery],
+  ['selectAll', ENEMY_GLYPHS.selectAll],
 ];
 
 const out = document.getElementById('out')!;
@@ -80,7 +84,10 @@ for (const era of ERAS) {
     // The era's own hand first, then the others on the same paper as controls:
     // if the typed mark only looks right because the page changed, that shows up
     // here and nowhere else.
-    const hands: Mark[] = [era.hand, ...(['brush', 'nib', 'type'] as Mark[]).filter((m) => m !== era.hand)];
+    const hands: Mark[] = [
+      era.hand,
+      ...(['brush', 'nib', 'type', 'raster'] as Mark[]).filter((m) => m !== era.hand),
+    ];
     for (const m of hands) strip(m === era.hand ? `${m}  ← shipped` : m, theme, m, true);
   }
 }

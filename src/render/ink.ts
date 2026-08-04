@@ -280,6 +280,79 @@ export function strikeStroke(ctx: CanvasRenderingContext2D, pts: Pt[], o: Strike
   ctx.restore();
 }
 
+export interface RasterOpts {
+  color: string;
+  /** Constant, and also the size of the pixel the mark is quantised to. */
+  width: number;
+  alpha?: number;
+  /**
+   * Where the pixel grid starts, in pixels.
+   *
+   * Not jitter — the opposite. The grid is a property of the SURFACE, so every
+   * mark on a page has to snap to the same one or the quantisation reads as
+   * noise instead of as resolution. The renderer passes the board origin.
+   */
+  origin?: [number, number];
+}
+
+/**
+ * A rendered mark — the word processor's answer to `strikeStroke`.
+ *
+ * The ladder strips something at every step. A brush varies its pressure; a
+ * typebar cannot, but it is still a physical object landing on physical paper,
+ * so it lands a little off its place and inks unevenly. A rendered glyph has
+ * NEITHER. It is the same every time, exactly where it was put, at exactly one
+ * value — so all three of the things that make the other two marks alive are
+ * gone, and the mark has to be carried by the one property this medium has and
+ * the others do not: RESOLUTION.
+ *
+ * So this does not draw a line at all. It walks the polyline and fills the
+ * pixels the line passes through, snapped to a grid — which is why a diagonal
+ * comes out as a staircase. The grid is anchored on a fixed origin rather than
+ * on each stroke, so every mark in a glyph steps in the same places and the
+ * quantisation reads as resolution rather than as noise. Jitter is the one thing
+ * era III is defined by not having.
+ *
+ * Deduplicated through a Set, because a polyline that doubles back would
+ * otherwise paint some cells twice and the difference is visible the moment
+ * alpha is below one.
+ */
+export function rasterStroke(ctx: CanvasRenderingContext2D, pts: Pt[], o: RasterOpts): void {
+  if (pts.length < 2) return;
+  const px = Math.max(1, o.width);
+  const [ox, oy] = o.origin ?? [0, 0];
+  const cells = new Set<string>();
+
+  const put = (x: number, y: number) => {
+    const cx = Math.floor((x - ox) / px);
+    const cy = Math.floor((y - oy) / px);
+    cells.add(`${cx},${cy}`);
+  };
+
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [ax, ay] = pts[i];
+    const [bx, by] = pts[i + 1];
+    const len = Math.hypot(bx - ax, by - ay);
+    // Sampled at half a pixel so no cell on a near-axis run is stepped over.
+    const n = Math.max(1, Math.ceil((len / px) * 2));
+    for (let j = 0; j <= n; j++) {
+      const t = j / n;
+      put(ax + (bx - ax) * t, ay + (by - ay) * t);
+    }
+  }
+
+  ctx.save();
+  ctx.globalAlpha = o.alpha ?? 1;
+  ctx.fillStyle = o.color;
+  for (const cell of cells) {
+    const [cx, cy] = cell.split(',').map(Number);
+    // A hair of overlap, or the seams between cells show as a lighter lattice
+    // through a stroke that is meant to read as one solid run of pixels.
+    ctx.fillRect(ox + cx * px, oy + cy * px, px + 0.5, px + 0.5);
+  }
+  ctx.restore();
+}
+
 /**
  * A volute — the scrolled corner flourish of a decorated page.
  *

@@ -319,7 +319,20 @@ export class Effects {
       ctx.globalAlpha = a;
       ctx.fillStyle = d.color;
       const r = d.r * (1 - t * 0.25);
-      if (this.hand === 'type') {
+      if (this.hand === 'raster') {
+        /*
+         * A PIXEL, and hard on purpose — the one place in the game where a solid
+         * axis-aligned square is right rather than harsh.
+         *
+         * The typed fleck had to be softened because a slug leaves ink pressed
+         * into a fibre and a rectangle has no ink in it. Nothing here is ink. A
+         * rendered page that is damaged does not spatter, it DROPS SAMPLES: so
+         * these are square, snapped to whole pixels, and they step as they
+         * travel instead of sliding.
+         */
+        const s = Math.max(1, Math.round(r * 1.7));
+        ctx.fillRect(Math.round(d.x / s) * s, Math.round(d.y / s) * s, s, s);
+      } else if (this.hand === 'type') {
         /*
          * A struck fleck — but a SOFT one.
          *
@@ -377,6 +390,33 @@ export class Effects {
       const progress = t < f.drawFor ? easeOutQuint(t / f.drawFor) : 1;
       const held = t < f.drawFor ? 0 : (t - f.drawFor) / (1 - f.drawFor);
       const alpha = Math.min(1, 1.7 * (1 - held));
+
+      if (this.hand === 'raster') {
+        /*
+         * A WIPE, not a gesture and not a row of characters.
+         *
+         * The brush swash is a hand moving; the typed version is a machine
+         * setting one mark after another. A rendered surface does neither — it
+         * REVEALS. So the same path is walked as a run of hard rectangles that
+         * appear in order and hold at full value until the whole thing is
+         * dropped, which is exactly how an interface of this era draws anything
+         * that is meant to look like it happened rather than like it was made.
+         */
+        const steps = 18;
+        const shown = Math.max(1, Math.round(steps * progress));
+        const s = Math.max(2, Math.round(f.width * 0.9));
+        ctx.save();
+        ctx.fillStyle = f.color;
+        // Flat, and dropped rather than faded. There is no drying here.
+        ctx.globalAlpha = Math.min(1, alpha * 0.9);
+        for (let i = 0; i < shown; i++) {
+          const at = (i / (steps - 1)) * (f.pts.length - 1);
+          const p = f.pts[Math.round(at)];
+          ctx.fillRect(Math.round(p[0] / s) * s, Math.round(p[1] / s) * s, s, s);
+        }
+        ctx.restore();
+        continue;
+      }
 
       if (this.hand === 'type') {
         /*

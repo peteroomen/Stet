@@ -16,10 +16,36 @@
   --danger: #8c2f1e;
 
   --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  /*
+   * The chrome's hand.
+   *
+   * The board changes instrument on a descent; the page furniture around it did
+   * not, so a struck board sat inside a Renaissance serif and a rendered one sat
+   * inside the same. `applyThemeVars` writes `data-era` on the root and these
+   * three rules do the rest — the running head, the footnote and the margin all
+   * read from `--face`, so they change together or not at all.
+   */
+  --face: var(--serif);
+  --faceTrack: var(--track);
 
   --hud: clamp(0.68rem, 2.6vmin, 0.86rem);
   --track: 0.16em;
   --radius: 2px;
 
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* A machine sets its own furniture, tighter and monospaced. */
+:root[data-era='typewriter'] {
+  --face: var(--mono);
+  --faceTrack: 0.1em;
+}
+
+/* And an interface sets it in the face every interface is set in. */
+:root[data-era='wordprocessor'] {
+  --face: var(--sans);
+  --faceTrack: 0.08em;
 }

@@ -69,6 +69,22 @@ const BLOCK_MS = 130;
 const WAIT_MS = 70;
 const GAP_MS = 25;
 const ENEMY_MS = 135;
+/**
+ * Being moved, as against moving.
+ *
+ * Slower than a step of your own on purpose. A step is 85 ms because you asked
+ * for it and the game should get out of the way; an insertion is something done
+ * TO you, and the difference between the two verbs has to be visible or the hero
+ * simply appears on a tile they never walked to.
+ */
+const SHOVE_MS = 130;
+/**
+ * The page turning on a descent.
+ *
+ * Short on purpose: you will see it forty times in a good run, so it has to be
+ * over before it can become something to sit through.
+ */
+const PAGE_TURN_MS = 420;
 const TAIL_MS = 40;
 
 /** Stable seed for a cost mark, so its wobble does not reshuffle every frame. */
@@ -93,6 +109,16 @@ export interface Motion {
 
 export interface TurnAnim {
   playerMotion: Motion | null;
+  /**
+   * The hero being MOVED, during the enemy phase.
+   *
+   * Its own slot rather than the one above, because both can happen in a single
+   * turn: you step, and then a CURSOR strikes and pushes you on. One slot would
+   * have to throw one of them away, and the one it would throw away is the step
+   * the player actually made — so the picture would show the hero starting the
+   * turn somewhere they never were.
+   */
+  playerShove: Motion | null;
   enemyMotions: Map<number, Motion>;
   cues: { at: number; ev: Ev }[];
   fired: boolean[];
@@ -101,6 +127,7 @@ export interface TurnAnim {
 
 export const EMPTY_ANIM: TurnAnim = {
   playerMotion: null,
+  playerShove: null,
   enemyMotions: new Map(),
   cues: [],
   fired: [],
@@ -158,6 +185,7 @@ export function buildAnim(events: Ev[]): TurnAnim {
   }
 
   const eStart = playerDur + GAP_MS;
+  let playerShove: Motion | null = null;
   const enemyMotions = new Map<number, Motion>();
   const cues: { at: number; ev: Ev }[] = [];
   let total = playerDur;
@@ -195,6 +223,26 @@ export function buildAnim(events: Ev[]): TurnAnim {
       case 'trait':
         cues.push({ at: 0, ev });
         break;
+      /*
+       * The insertion. Timed to start just after the blow that caused it lands,
+       * so the order on screen is the order in the rules: struck, then carried.
+       * Slower than a step of your own — being moved is not the same verb as
+       * moving, and the difference has to be visible or it reads as a glitch.
+       */
+      case 'shove': {
+        const t0 = eStart + ENEMY_MS * 0.55;
+        playerShove = {
+          from: ev.from,
+          to: ev.to,
+          t0,
+          t1: t0 + SHOVE_MS,
+          kind: 'move',
+          weight: 0,
+        };
+        cues.push({ at: t0, ev });
+        total = Math.max(total, t0 + SHOVE_MS);
+        break;
+      }
       case 'emove':
         enemyMotions.set(ev.id, {
           from: ev.from,
@@ -247,6 +295,7 @@ export function buildAnim(events: Ev[]): TurnAnim {
   cues.sort((a, b) => a.at - b.at);
   return {
     playerMotion,
+    playerShove,
     enemyMotions,
     cues,
     fired: new Array(cues.length).fill(false),
@@ -312,6 +361,40 @@ export interface Geometry {
   size: number;
   pad: number;
   cell: number;
+}
+
+/**
+ * How much of the shorter side the board is allowed to take.
+ *
+ * It used to be all of it, and the illuminated band paid for that: the gilding
+ * sits outside the play frame by design — decoration that competes with the
+ * board is decoration that makes the game worse — so at full bleed its corner
+ * volutes ran off the edge of the canvas and were clipped on every floor of era
+ * I. Eight per cent back is about five pixels a cell on a phone, and the page
+ * has half a screen of unused height to pay it out of.
+ */
+const BOARD_FIT = 0.92;
+
+/**
+ * Where the square board sits on the page.
+ *
+ * One function because three things need to agree: the renderer draws from it,
+ * the effects layer aims particles through it, and the React chrome positions
+ * the margin under it. When they disagreed the grid drifted off the pieces
+ * standing on it, which is the bug this shape exists to make impossible.
+ *
+ * The vertical bias is a typographic one rather than a technical one. A text
+ * block centred in a page reads as floating; every book ever set puts it above
+ * centre, with the deeper margin at the foot — and that deeper margin is exactly
+ * where the marginalia go.
+ */
+export function layout(cssW: number, cssH: number): { size: number; ox: number; oy: number } {
+  const size = Math.min(cssW, cssH) * BOARD_FIT;
+  return {
+    size,
+    ox: (cssW - size) / 2,
+    oy: Math.max((cssH - size) * 0.06, (cssH - size) * 0.34),
+  };
 }
 
 export function geometry(size: number): Geometry {
@@ -382,8 +465,9 @@ function makePaper(
   ctx.restore();
 
   // Foxing — a few soft age spots, stable per depth. Machine-made paper is
-  // younger and has had less time to spot, so later eras get fewer and fainter.
-  const foxing = era.hand === 'brush' ? 6 : 2;
+  // younger and has had less time to spot, so later eras get fewer and fainter,
+  // and a page that is being simulated has never been anywhere to spot at all.
+  const foxing = era.hand === 'brush' ? 6 : era.hand === 'raster' ? 0 : 2;
   ctx.save();
   ctx.globalAlpha = era.hand === 'brush' ? 0.05 : 0.03;
   ctx.fillStyle = theme.grain;
@@ -413,7 +497,9 @@ function makePaper(
   const pattern = ctx.createPattern(grain, 'repeat');
   if (pattern) {
     ctx.save();
-    ctx.globalAlpha = 0.5;
+    // Vellum has tooth, foolscap has some, and a rendered page has none — what
+    // is left there is display noise rather than fibre, so it is barely present.
+    ctx.globalAlpha = era.hand === 'raster' ? 0.14 : 0.5;
     ctx.fillStyle = pattern;
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
@@ -437,24 +523,36 @@ function makePaper(
    * much fainter tint so the tiles are still legible as tiles.
    */
   const ruled = era.hand !== 'brush';
+  /*
+   * A GRID rather than a ruling, in era III.
+   *
+   * A manuscript is gridded both ways because a scribe rules a grid; foolscap is
+   * ruled one way because that is what foolscap is. A word processor's document
+   * has no lines on it at all — the only line it draws for free is a table
+   * boundary, so that is what the board is: cells, both directions equal, in the
+   * flattest grey the palette has. The teaching is in the difference. Era II's
+   * page says "this place is about lines" before anything moves; era III's says
+   * "this place is about blocks".
+   */
+  const grid = era.hand === 'raster';
   for (let i = 1; i < SIZE; i++) {
     const x = x0 + g.cell * i;
     const y = y0 + g.cell * i;
     inkStroke(ctx, [[x, y0], [x, y1]] as Pt[], {
       color: theme.rule,
-      width: Math.max(1, g.cell * (ruled ? 0.01 : 0.016)),
+      width: Math.max(1, g.cell * (grid ? 0.014 : ruled ? 0.01 : 0.016)),
       seed: seed + i * 17,
       amp: g.cell * (ruled ? 0.002 : 0.012),
-      alpha: ruled ? 0.3 : 0.85,
+      alpha: grid ? 1 : ruled ? 0.3 : 0.85,
       passes: 1,
     });
     inkStroke(ctx, [[x0, y], [x1, y]] as Pt[], {
       color: theme.rule,
-      width: Math.max(1, g.cell * (ruled ? 0.02 : 0.016)),
+      width: Math.max(1, g.cell * (grid ? 0.014 : ruled ? 0.02 : 0.016)),
       seed: seed + i * 41 + 500,
       // A machine rules a straight line. Only the hand wanders.
       amp: g.cell * (ruled ? 0.002 : 0.012),
-      alpha: ruled ? 1 : 0.85,
+      alpha: grid ? 1 : ruled ? 1 : 0.85,
       passes: 1,
     });
   }
@@ -503,14 +601,23 @@ function makePaper(
    *
    * A scribe rubricates a roman numeral in the margin. A typist types a page
    * number — arabic, monospaced, red because the ribbon has a red half and a
-   * page number is the one thing worth rolling the ribbon over for.
+   * page number is the one thing worth rolling the ribbon over for. A word
+   * processor does not put a page number on the page at all: it puts it in the
+   * STATUS BAR, in the interface's own grey sans, and it says what kind of
+   * number it is.
    */
   ctx.save();
   ctx.globalAlpha = 0.92;
   ctx.fillStyle = theme.blood;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  if (era.hand === 'brush') {
+  if (era.hand === 'raster') {
+    ctx.globalAlpha = 0.75;
+    ctx.fillStyle = theme.inkSoft;
+    ctx.font = `500 ${Math.round(g.pad * 0.34)}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+    ctx.letterSpacing = '0.04em';
+    ctx.fillText(`Page ${depth}`, x0 + g.cell * 0.02, y0 - g.pad * 0.34);
+  } else if (era.hand === 'brush') {
     ctx.font = `700 ${Math.round(g.pad * 0.5)}px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`;
     ctx.fillText(roman(depth), x0 + g.cell * 0.02, y0 - g.pad * 0.34);
   } else {
@@ -585,7 +692,91 @@ function decorate(
   era: Era,
 ): void {
   if (era.hand === 'brush') illuminate(ctx, g, theme, seed, x0, y0, x1, y1);
+  else if (era.hand === 'raster') chrome(ctx, g, theme, x0, y0, x1, y1);
   else typeset(ctx, g, theme, seed, x0, y0, x1, y1);
+}
+
+/**
+ * III · the rendered margin: a ruler, tab stops and a scrollbar.
+ *
+ * Era I's margin is a GROWN thing — a vine with leaves, volutes scrolling into
+ * the corners. Era II's is a MADE one — pinstriping and turned screw-heads,
+ * because a machine of that period was lined out by hand and bolted together.
+ * There is nowhere left for a material to go, so this one is not a material at
+ * all: it is DRAWN BY SOFTWARE. A ruler across the head with a tick every tile
+ * and an indent marker sitting on it, and a scrollbar down the side with a thumb
+ * showing how far into the descent you are.
+ *
+ * Which means it is the first margin in the game that carries information. That
+ * is not decoration creeping into the play area — it is the opposite, and it is
+ * the honest thing for this era to do: a word processor's margins are where the
+ * document tells you about itself.
+ *
+ * Nothing here wobbles, boils or varies. Era I's margin is drawn with `volutePath`
+ * and a brush; era II's is struck with a hair of slop; this is `fillRect` and
+ * `strokeRect` and not one call to `wobble` anywhere, because that absence IS
+ * the era.
+ */
+function chrome(
+  ctx: CanvasRenderingContext2D,
+  g: Geometry,
+  theme: Theme,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): void {
+  const m = g.pad * 0.4;
+  const bar = Math.min(g.pad * 0.42, g.cell * 0.14);
+
+  ctx.save();
+
+  // The ruler: a flat track across the head of the document, with a tick at
+  // every tile boundary and a taller one at each end.
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = theme.leaf;
+  ctx.fillRect(x0 - m, y0 - m - bar, x1 - x0 + m * 2, bar);
+
+  ctx.globalAlpha = 0.9;
+  ctx.strokeStyle = theme.leafDeep;
+  ctx.lineWidth = Math.max(1, g.cell * 0.012);
+  ctx.beginPath();
+  for (let i = 0; i <= SIZE; i++) {
+    const x = x0 + g.cell * i;
+    const long = i === 0 || i === SIZE;
+    ctx.moveTo(x, y0 - m - bar * (long ? 0.86 : 0.5));
+    ctx.lineTo(x, y0 - m - bar * 0.08);
+  }
+  ctx.stroke();
+
+  /*
+   * The indent marker, sitting on the ruler at the text's left edge. The one
+   * piece of a word processor's chrome that everybody has dragged by accident,
+   * and a triangle is the only shape in this margin that is not a rectangle —
+   * which is exactly why it reads as a control rather than as furniture.
+   */
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = theme.leafDeep;
+  const tip = bar * 0.6;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0 - m - bar * 0.06);
+  ctx.lineTo(x0 - tip, y0 - m - bar * 0.72);
+  ctx.lineTo(x0 + tip, y0 - m - bar * 0.72);
+  ctx.closePath();
+  ctx.fill();
+
+  // The scrollbar: a track down the right of the document and a thumb on it.
+  // Two thirds of the way down, which is where a page like this always is.
+  const track = x1 + m + bar * 0.2;
+  ctx.globalAlpha = 0.7;
+  ctx.fillStyle = theme.leaf;
+  ctx.fillRect(track, y0 - m, bar * 0.72, y1 - y0 + m * 2);
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = theme.leafDeep;
+  const span = y1 - y0 + m * 2;
+  ctx.fillRect(track + bar * 0.12, y0 - m + span * 0.42, bar * 0.48, span * 0.3);
+
+  ctx.restore();
 }
 
 /**
@@ -819,6 +1010,15 @@ export class Renderer {
     this.paperKey = '';
   }
 
+  /**
+   * Wall-clock time the last page was turned, or -1 for never.
+   *
+   * Set by the runtime off the `descend` cue. A leaf sweeping across is the one
+   * piece of ceremony a descent had no way to express: the board simply became a
+   * different board, which reads as a teleport rather than as progress.
+   */
+  pageTurnAt = -1;
+
   /** Called on theme change: cached glyphs are tinted, so they must be redrawn. */
   invalidateGlyphs(): void {
     clearGlyphCache();
@@ -845,23 +1045,22 @@ export class Renderer {
       this.invalidatePaper();
     }
 
-    const size = Math.min(cssW, cssH);
+    const { size, ox, oy } = layout(cssW, cssH);
     const g = geometry(size);
-    const theme = this.theme;
-    // ~9fps boil. Hand-drawn animation redraws; it does not tween.
-    const boil = Math.floor(wallClock / 112) % 3;
-
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cssW, cssH);
-
-    const ox = (cssW - size) / 2;
-    const oy = (cssH - size) / 2;
-
     /*
      * The instrument this floor is drawn with.
      *
      * Read off the era rather than passed in, so every mark on the board changes
      * hand together the moment you descend into a new one — actors, items, hero.
+     *
+     * This has to happen BEFORE `this.theme` is read, and that ordering was a
+     * real bug rather than a tidiness. `theme` is derived from `this.palette`,
+     * so taking it first gave the whole frame the PREVIOUS era's colours — and
+     * `makePaper` then baked that page and cached it under the new era's key,
+     * where nothing would ever rebuild it. The board changed hand on the floor
+     * you descended to and kept the last era's paper underneath it for good.
+     * Visible in `npm run shots:era` as blue foolscap rules on a white bond
+     * page, which is how it was finally caught.
      */
     const era = eraAt(state.depth);
     this.hand = era.hand;
@@ -873,6 +1072,13 @@ export class Renderer {
       this.palette = era.palette;
       clearGlyphCache();
     }
+
+    const theme = this.theme;
+    // ~9fps boil. Hand-drawn animation redraws; it does not tween.
+    const boil = Math.floor(wallClock / 112) % 3;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
 
     const key = `${cssW}x${cssH}:${size}:${this.themeName}:${era.id}:${state.depth}:${dpr}`;
     if (!this.paper || this.paperKey !== key) {
@@ -922,6 +1128,71 @@ export class Renderer {
       ctx.fillRect(0, 0, cssW, cssH);
       ctx.restore();
     }
+
+    this.drawPageTurn(ctx, cssW, cssH, wallClock, theme);
+  }
+
+  /**
+   * The page turning, over the top of everything.
+   *
+   * A leaf lifting off the right edge and sweeping left, with the light catching
+   * its curl. Drawn AFTER the new floor rather than as a transition between two
+   * boards, which is the cheap way and also the right one: what you are watching
+   * is the old page coming away, and the new one has been underneath it the whole
+   * time. Nothing is captured, nothing is double-buffered, and the whole thing is
+   * three gradients.
+   *
+   * Deliberately short. It plays on every descent, and a flourish you will see
+   * forty times in a run must be over before you can be annoyed by it — which is
+   * also why a true curl was not built: a folded leaf reads as slow at any speed
+   * that is fair to the combat's timing.
+   */
+  private drawPageTurn(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    wall: number,
+    theme: Theme,
+  ): void {
+    if (this.pageTurnAt < 0) return;
+    const p = (wall - this.pageTurnAt) / PAGE_TURN_MS;
+    if (p < 0 || p >= 1) {
+      if (p >= 1) this.pageTurnAt = -1;
+      return;
+    }
+
+    // Eased so it leaves fast and settles, like a leaf that has been let go of.
+    const e = easeOutCubic(p);
+    // The leading edge travels from the right margin to past the left one.
+    const edge = w * 1.06 - w * 1.16 * e;
+    const lift = h * 0.012 * Math.sin(p * Math.PI);
+
+    ctx.save();
+    ctx.globalAlpha = 1 - p * 0.12;
+
+    // The leaf itself: the page's own colour, a touch deeper toward the spine so
+    // it reads as a surface with a thickness rather than as a wipe.
+    ctx.translate(0, -lift);
+    const face = ctx.createLinearGradient(edge, 0, w, 0);
+    face.addColorStop(0, theme.paper);
+    face.addColorStop(0.82, theme.paper);
+    face.addColorStop(1, theme.paperDeep);
+    ctx.fillStyle = face;
+    ctx.fillRect(edge, -lift, w - edge + 2, h + lift * 2);
+
+    // The curl: a bright rule right on the edge with the shadow it casts on the
+    // page underneath. This is the whole illusion — without the shadow the leaf
+    // is a rectangle sliding, and with it the page beneath is lower down.
+    const curl = ctx.createLinearGradient(edge - w * 0.055, 0, edge, 0);
+    curl.addColorStop(0, 'rgba(0,0,0,0)');
+    curl.addColorStop(1, 'rgba(0,0,0,0.16)');
+    ctx.fillStyle = curl;
+    ctx.fillRect(edge - w * 0.055, -lift, w * 0.055, h + lift * 2);
+
+    ctx.globalAlpha = (1 - p * 0.12) * 0.9;
+    ctx.fillStyle = theme.paperDeep;
+    ctx.fillRect(edge, -lift, Math.max(1, w * 0.004), h + lift * 2);
+    ctx.restore();
   }
 
   /**
@@ -1180,6 +1451,78 @@ export class Renderer {
         ctx.setLineDash([g.cell * 0.09, g.cell * 0.07]);
         ctx.beginPath();
         ctx.arc(ex, ey, g.cell * (0.4 - pulse * 0.06), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        continue;
+      }
+      /*
+       * A selection: a region rather than a line, so it is drawn as one.
+       *
+       * The two states are drawn as two different things on purpose. While the
+       * block is being held down it is a MARQUEE — a faint wash and a dashed
+       * edge crawling around whatever shape has been taken so far, in the page's
+       * own ink. Nothing about it is lethal yet, and colouring it as danger
+       * would spend the game's loudest signal on a warning, so that when the
+       * blow finally is committed there is nothing louder left to say it with.
+       * On the release turn it goes solid and takes the danger colour like every
+       * other committed strike in the game.
+       *
+       * The edge is walked per tile rather than drawn as a bounding rectangle,
+       * because a selection is not always a rectangle: THE SELECT ALL takes the
+       * page in reading order, so its shape is a staircase. A bounding box would
+       * claim tiles it is not taking — the same lie the carriage return's band
+       * told when it was drawn as a single spine.
+       */
+      if (intent.kind === 'select') {
+        if (intent.tiles.length === 0) continue;
+        const live = intent.release;
+        const color = live ? theme.blood : theme.inkSoft;
+        const alpha = settled * (live ? 0.5 + pulse * 0.28 : 0.3);
+        const inSet = new Set(intent.tiles.map((t) => `${t.x},${t.y}`));
+
+        ctx.save();
+        // The wash. Kept low even on the release turn: the block covers up to a
+        // third of the board, and anything heavier buries the pieces standing
+        // in it at exactly the moment you most need to read them.
+        ctx.globalAlpha = alpha * (live ? 0.34 : 0.24);
+        ctx.fillStyle = color;
+        for (const t of intent.tiles) {
+          ctx.fillRect(g.pad + g.cell * t.x, g.pad + g.cell * t.y, g.cell, g.cell);
+        }
+
+        // The marquee, on the boundary only — an inside edge between two
+        // selected tiles is not an edge of the selection.
+        ctx.globalAlpha = Math.min(1, alpha * 1.5);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = g.cell * (live ? 0.05 : 0.03);
+        if (live) ctx.setLineDash([]);
+        else {
+          ctx.setLineDash([g.cell * 0.12, g.cell * 0.09]);
+          // Marching ants. A selection that is still being dragged is the one
+          // thing on this page that is genuinely still happening.
+          ctx.lineDashOffset = -(wall / 26) % (g.cell * 0.21);
+        }
+        ctx.beginPath();
+        for (const t of intent.tiles) {
+          const x = g.pad + g.cell * t.x;
+          const y = g.pad + g.cell * t.y;
+          if (!inSet.has(`${t.x},${t.y - 1}`)) {
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + g.cell, y);
+          }
+          if (!inSet.has(`${t.x},${t.y + 1}`)) {
+            ctx.moveTo(x, y + g.cell);
+            ctx.lineTo(x + g.cell, y + g.cell);
+          }
+          if (!inSet.has(`${t.x - 1},${t.y}`)) {
+            ctx.moveTo(x, y);
+            ctx.lineTo(x, y + g.cell);
+          }
+          if (!inSet.has(`${t.x + 1},${t.y}`)) {
+            ctx.moveTo(x + g.cell, y);
+            ctx.lineTo(x + g.cell, y + g.cell);
+          }
+        }
         ctx.stroke();
         ctx.restore();
         continue;
@@ -1570,7 +1913,16 @@ export class Renderer {
     clock: number,
     boil: number,
   ): void {
-    const m = anim.playerMotion;
+    /*
+     * The insertion takes over the moment it begins.
+     *
+     * Both motions can be live in one turn — you stepped, and then something
+     * struck you and carried you on — and they are strictly sequential, so the
+     * shove simply wins once its clock has started. Before that the turn belongs
+     * to whatever you did with it.
+     */
+    const shove = anim.playerShove;
+    const m = shove && clock >= shove.t0 ? shove : anim.playerMotion;
     const { pos, scale } = m ? motionAt(m, clock) : { pos: s.player.pos, scale: 1 };
     const [cx, cy] = centerOf(g, pos);
     // The tile you are ACTUALLY standing on. After a bump this is where you

@@ -21,6 +21,7 @@ describe('the turn timeline schedules everything', () => {
     'move',
     'bump',
     'kill',
+    'shove',
     'emove',
     'wind',
     'eattack',
@@ -59,6 +60,7 @@ describe('the turn timeline schedules everything', () => {
         glance: false,
       },
       kill: { t: 'kill', phase: 'p', pos: to, kind: 'rat' },
+      shove: { t: 'shove', phase: 'e', id: 1, kind: 'cursor', from: at, to, dir: 'right' },
       emove: { t: 'emove', phase: 'e', id: 1, kind: 'rat', from: at, to },
       wind: { t: 'wind', phase: 'e', id: 1, kind: 'charger', pos: at },
       eattack: {

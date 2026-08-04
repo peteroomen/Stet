@@ -23,7 +23,11 @@ export type EnemyKind =
   | 'typebar'
   | 'carriage'
   | 'carriageReturn'
-  | 'semicolon';
+  | 'semicolon'
+  | 'cursor'
+  | 'selection'
+  | 'autocomplete'
+  | 'selectAll';
 export type ItemKind = 'vial' | 'nib' | 'gesso';
 
 /**
@@ -52,6 +56,26 @@ export type Intent =
    * and the engine keeps working; `tiles` is the payload.
    */
   | { kind: 'sweep'; path: []; tiles: Vec[] }
+  /**
+   * A block of the page, held down and then deleted.
+   *
+   * Era II threatens LINES, and a line is answered by being off it — one step,
+   * perpendicular. Era III threatens AREAS, and an area cannot be answered by
+   * one step: you have to have been leaving already. So this verb is a sweep
+   * with a fuse. It is drawn for a turn or more while `release` is false and
+   * nothing is struck; on the turn `release` is true every tile in it takes the
+   * blow at once.
+   *
+   * That split is the whole mechanic and it is why `sweep` would not do. A sweep
+   * is a promise made one turn ahead; a selection is a promise made one turn
+   * ahead about a shape you have been watching grow, so the counterplay is not a
+   * dodge but a route. Marking and striking cannot be the same flag, or the
+   * telegraph would either lie for a turn or be lethal on the turn it appears.
+   *
+   * `path` stays present and empty for the same reason `sweep`'s does: every
+   * `intent.path` read in the engine and the renderer keeps working.
+   */
+  | { kind: 'select'; path: []; tiles: Vec[]; release: boolean }
   /** Winding up. Will not move this turn; acts next turn. */
   | { kind: 'wind'; path: [] }
   /** Nowhere legal to go. */
@@ -282,6 +306,13 @@ function cloneIntent(i: Intent): Intent {
       return { kind: 'move', path: i.path.map((v) => ({ x: v.x, y: v.y })) };
     case 'sweep':
       return { kind: 'sweep', path: [], tiles: i.tiles.map((v) => ({ x: v.x, y: v.y })) };
+    case 'select':
+      return {
+        kind: 'select',
+        path: [],
+        tiles: i.tiles.map((v) => ({ x: v.x, y: v.y })),
+        release: i.release,
+      };
     case 'wind':
       return { kind: 'wind', path: [] };
     case 'hold':
@@ -320,6 +351,16 @@ export type Ev =
       glance: boolean;
     }
   | { t: 'kill'; phase: EvPhase; pos: Vec; kind: EnemyKind }
+  /**
+   * You were moved, and you did not do it.
+   *
+   * Era III's machinery edits the page rather than merely marking it, so a blow
+   * from a CURSOR carries you along the line it struck. Its own event because
+   * nothing else in the game takes your position away, and because the renderer
+   * has to animate the hero travelling during the ENEMY phase — a `move` here
+   * would be read as a step you took and would overwrite the one you did.
+   */
+  | { t: 'shove'; phase: EvPhase; id: number; kind: EnemyKind; from: Vec; to: Vec; dir: Dir }
   | { t: 'emove'; phase: EvPhase; id: number; kind: EnemyKind; from: Vec; to: Vec }
   | { t: 'wind'; phase: EvPhase; id: number; kind: EnemyKind; pos: Vec }
   | {
