@@ -27,16 +27,21 @@ await page.goto(base, { waitUntil: 'networkidle' });
 await page.click('.btn');
 await page.waitForTimeout(400);
 
-for (const [name, depth] of [['manuscript', 3], ['typewriter', 6]]) {
+for (const [name, depth] of [['manuscript', 3], ['typewriter', 6], ['boss', 8]]) {
   await page.evaluate((d) => {
     const rt = window.__stet;
     const mk = (id, kind, x, y, ready) => ({ id, kind, pos: { x, y }, hp: 3, maxHp: 5, ready, struck: false, poise: true, intent: { kind: 'hold', path: [] }, seed: id * 17 + 3 });
-    rt.state = { ...rt.state, depth: d, blots: [{ x: 1, y: 3 }], stairsOpen: false,
-      items: [{ id: 900, kind: 'gesso', pos: { x: 4, y: 0 }, seed: 5 }],
+    const boss = d === 8;
+    rt.state = { ...rt.state, depth: d, blots: boss ? [] : [{ x: 1, y: 3 }], stairsOpen: false,
+      // Well into the fight, so the band has widened and the bell has rung twice.
+      floorTurns: boss ? 10 : 0, floorWaits: 0,
+      items: boss ? [] : [{ id: 900, kind: 'gesso', pos: { x: 4, y: 0 }, seed: 5 }],
       player: { ...rt.state.player, pos: { x: 2, y: 2 }, hp: 5, maxHp: 7, ward: 1 },
-      enemies: [mk(101, 'warden', 3, 1, true), mk(102, 'stalker', 0, 1, true), mk(103, 'carriage', 0, 4, true), mk(104, 'typebar', 1, 0, true)] };
+      enemies: boss
+        ? [mk(200, 'carriageReturn', 4, 1, true)]
+        : [mk(101, 'warden', 3, 1, true), mk(102, 'stalker', 0, 1, true), mk(103, 'carriage', 0, 4, true), mk(104, 'typebar', 1, 0, true)] };
     rt.clock = 1e9;
-    rt.input('wait');
+    rt.input(boss ? 'left' : 'wait');
   }, depth);
   await page.waitForTimeout(1100);
   await page.screenshot({ path: join(OUT, `era-${name}.png`) });

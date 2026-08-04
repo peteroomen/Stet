@@ -1,8 +1,10 @@
 import {
   ENEMY_STATS,
+  bandAt,
   intentThreatens,
   makeEnemy,
   planIntent,
+  ringsBell,
   spawnsOnWind,
   strides,
 } from './enemies';
@@ -12,6 +14,7 @@ import { DIR_VEC, ORTHO, add, allTiles, chebyshev, eq, inBounds } from './grid';
 import { Rng, randomSeed } from './rng';
 import { SHIPPED, type Rules } from './rules';
 import { TRAIT_BY_ID, applyTraitRules, offerTraits } from './traits';
+import { cloneState } from './types';
 import type { Action, Dir, Enemy, Ev, GameState, StepResult, Vec } from './types';
 
 /**
@@ -198,7 +201,7 @@ export function chooseTrait(state: GameState, id: string): StepResult {
   const trait = TRAIT_BY_ID.get(id);
   if (!trait) return { state, events: [], spent: false };
 
-  const d: GameState = structuredClone(state);
+  const d: GameState = cloneState(state);
   d.rules = applyTraitRules(d.rules, trait);
   trait.player?.(d.player);
   // MEND is spent, not kept: it can be taken again on the next floor, and a run
@@ -420,6 +423,23 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
       strike(e, d, e.pos, d.player.pos, ev);
     }
     if (st.slow || strides(e.kind)) e.ready = false;
+    /*
+     * The bell. Rung on the turn the band runs off the foot of the page and
+     * comes back — which is also the turn it comes back WIDER.
+     *
+     * Its own event because it is the boss's one piece of teaching. A player who
+     * never learns that the bell means "one fewer row is safe from now on"
+     * experiences the fight getting arbitrarily harder rather than advancing,
+     * and that is the difference between a boss and a difficulty spike.
+     */
+    if (e.kind === 'carriageReturn' && ringsBell(d.floorTurns + 1)) {
+      ev.push({
+        t: 'bell',
+        phase: 'e',
+        pos: { ...e.pos },
+        width: bandAt(d.floorTurns + 1).width,
+      });
+    }
     return;
   }
 
@@ -484,7 +504,7 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
 export function step(state: GameState, action: Action): StepResult {
   if (state.screen !== 'playing') return { state, events: [], spent: false };
 
-  const d: GameState = structuredClone(state);
+  const d: GameState = cloneState(state);
   const r = d.rules;
   const ev: Ev[] = [];
   const p = d.player;

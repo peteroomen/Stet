@@ -588,6 +588,23 @@ export class Runtime {
         break;
       }
 
+      /*
+       * The bell, and the whole reason it is an event: it has to TEACH. The
+       * player must connect "I heard that" with "one fewer row is safe from
+       * now on", or the fight reads as arbitrarily escalating rather than as
+       * advancing. So it says the number outright.
+       */
+      case 'bell': {
+        const [x, y] = at(ev.pos);
+        sfx.bell();
+        fx.addShake(cell * 0.07);
+        fx.addFreeze(120);
+        fx.addFlash(0.16, t.blood);
+        fx.ring(x, y, cell * 0.2, cell * 2.6, t.blood, cell * 0.05, 900);
+        fx.text(x, y - cell * 0.5, `${ev.width} ROWS`, t.blood, cell * 0.26, 1.6);
+        break;
+      }
+
       case 'unseal': {
         const [x, y] = at(ev.pos);
         sfx.unseal();

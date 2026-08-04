@@ -225,6 +225,9 @@ export function buildAnim(events: Ev[]): TurnAnim {
       // After the enemy phase has landed, so the new arrival is not mistaken
       // for one of the foes that just moved.
       case 'drown':
+      // The bell rings AFTER the band it just finished has landed, because it
+      // announces the next one — "that was the last pass at this width".
+      case 'bell':
         // Same slot as the spill it replaces — it IS the spill, landing on you
         // because the page had nowhere else to put it.
         cues.push({ at: eStart + ENEMY_MS + 40, ev });
@@ -817,6 +820,9 @@ export class Renderer {
      */
     const era = eraAt(state.depth);
     this.hand = era.hand;
+    // The effects layer draws outside this class but must speak the same hand:
+    // its splatter, its flourishes and its floating numerals all branch on it.
+    this.effects.hand = era.hand;
     if (this.palette !== era.palette) {
       // A new era is a different set of colours in every cached glyph bitmap.
       this.palette = era.palette;
@@ -1148,27 +1154,73 @@ export class Renderer {
         const threat = intentThreatens(intent, s.player.pos);
         const color = threat ? theme.blood : theme.ghost;
         const alpha = settled * (threat ? 0.6 + pulse * 0.3 : 0.34);
-        const ends = intent.tiles.map((t) => centerOf(g, t));
-        const xs = ends.map((p) => p[0]);
-        const ys = ends.map((p) => p[1]);
-        const spine: Pt[] = [
-          [Math.min(...xs), Math.min(...ys)],
-          [Math.max(...xs), Math.max(...ys)],
-        ];
-        inkStroke(ctx, spine, {
-          color,
-          width: g.cell * (threat ? 0.05 : 0.034),
-          seed: e.seed + 313,
-          amp: g.cell * 0.008,
-          alpha,
-          boil,
-          passes: threat ? 2 : 1,
+
+        /*
+         * One rule per LINE, worked out from the tiles themselves.
+         *
+         * The first version drew a single spine between the bounding corners of
+         * the tile set, which is right for one row and one column and wrong for
+         * anything else — the CARRIAGE RETURN's band of three rows came out as a
+         * single diagonal across the board, which says nothing true at all.
+         * Caught by a screenshot rather than a test, because the engine was
+         * correct throughout and only the drawing lied.
+         *
+         * A column is the special case: everything shares an x. Everything else
+         * is drawn as horizontal rules, one per distinct row, which covers both
+         * a single swept row and a band of them.
+         */
+        const lines: Pt[][] = [];
+        const allSameX = intent.tiles.every((t) => t.x === intent.tiles[0].x);
+        if (allSameX) {
+          const ys = intent.tiles.map((t) => centerOf(g, t)[1]);
+          const [x] = centerOf(g, intent.tiles[0]);
+          lines.push([
+            [x, Math.min(...ys)],
+            [x, Math.max(...ys)],
+          ]);
+        } else {
+          const byRow = new Map<number, number[]>();
+          for (const t of intent.tiles) {
+            const [cx, cy] = centerOf(g, t);
+            const row = byRow.get(cy) ?? [];
+            row.push(cx);
+            byRow.set(cy, row);
+          }
+          for (const [cy, xs] of byRow) {
+            lines.push([
+              [Math.min(...xs), cy],
+              [Math.max(...xs), cy],
+            ]);
+          }
+        }
+
+        lines.forEach((line, i) => {
+          inkStroke(ctx, line, {
+            color,
+            width: g.cell * (threat ? 0.05 : 0.034),
+            seed: e.seed + 313 + i * 37,
+            amp: g.cell * 0.008,
+            alpha,
+            boil,
+            passes: threat ? 2 : 1,
+          });
         });
-        // A tick on every covered tile, so the line reads as "these squares"
-        // rather than as a wall drawn between them.
+
+        // A tick on every covered tile, so a line reads as "these squares"
+        // rather than as a wall drawn between them. Crosswise to its own rule.
         const across = g.cell * (threat ? 0.2 : 0.14);
-        for (const [tx, ty] of ends) {
-          inkStroke(ctx, [[tx - across, ty], [tx + across, ty]] as Pt[], {
+        for (const t of intent.tiles) {
+          const [tx, ty] = centerOf(g, t);
+          const tick: Pt[] = allSameX
+            ? [
+                [tx - across, ty],
+                [tx + across, ty],
+              ]
+            : [
+                [tx, ty - across],
+                [tx, ty + across],
+              ];
+          inkStroke(ctx, tick, {
             color,
             width: g.cell * 0.03,
             seed: e.seed + 404 + tx,

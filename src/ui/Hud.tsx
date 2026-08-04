@@ -7,7 +7,7 @@ function Pips({ hp, maxHp, ward }: { hp: number; maxHp: number; ward: number }) 
     <div
       className={`pips${critical ? ' pips--critical' : ''}`}
       role="img"
-      aria-label={`${hp} of ${maxHp} health${ward > 0 ? `, ${ward} gesso` : ''}`}
+      aria-label={`${hp} of ${maxHp} health${ward > 0 ? `, ${ward} gesso — a layer that takes a blow first and never heals back` : ''}`}
     >
       {Array.from({ length: maxHp }, (_, i) => (
         <span
@@ -21,7 +21,11 @@ function Pips({ hp, maxHp, ward }: { hp: number; maxHp: number; ward: number }) 
         nothing you do will ever put it back.
       */}
       {Array.from({ length: ward }, (_, i) => (
-        <span key={`w${i}`} className="pip pip--ward" />
+        <span
+          key={`w${i}`}
+          className="pip pip--ward"
+          title="Gesso — takes a blow before your health, and never heals back"
+        />
       ))}
     </div>
   );

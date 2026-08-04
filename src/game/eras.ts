@@ -82,7 +82,7 @@ export const ERAS: Era[] = [
     id: 'typewriter',
     name: 'The Typewriter',
     roster: ['stalker', 'charger', 'warden', 'typebar', 'carriage'],
-    boss: 'drollery',
+    boss: 'carriageReturn',
     hand: 'type',
     palette: TYPEWRITER,
   },

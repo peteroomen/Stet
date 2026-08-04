@@ -152,6 +152,58 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStat> = {
     tell: 'Steps toward you, then sweeps its whole row. Leave the row, or break it.',
   },
   /*
+   * THE CARRIAGE RETURN — era II's boss, and a clock made out of its own verb.
+   *
+   * It does not move and it does not chase. It advances the PAGE: every turn a
+   * band of rows is struck, the band slides one row down, and when it runs off
+   * the bottom the bell rings, it returns to the top — and comes back ONE ROW
+   * WIDER. Five safe rows, then four, then three, until the page has run out.
+   *
+   * ## Why it is built this way
+   *
+   * A boss floor carries no spill, so the boss is the only clock on it — and the
+   * DROLLERY needed two extra rules bolted on to guarantee its fight ever ended
+   * (stop winding once the page is full; kill it and its scribbles fade). Both
+   * were found by the harness after 1-ply bots kited a capped-out boss for four
+   * thousand turns.
+   *
+   * This one needs none, because the clock IS the attack. By the fifth pass the
+   * band covers every row on the board and there is nowhere to stand at all, so
+   * the fight is over by roughly turn twenty-five whatever anyone does. That is
+   * termination by arithmetic rather than by probability, which is what the
+   * drollery's rules were trying to buy.
+   *
+   * ## The band is read off the floor clock, not off the boss
+   *
+   * `bandAt` derives everything from `floorTurns`, so the page turns whether or
+   * not you interrupted the machine. Breaking its stance cancels the strike you
+   * were about to eat — that is what poise is for — but it does not stop the
+   * paper advancing, and it must not: a boss whose clock you can pause by
+   * hitting it is a boss you can stall forever, which is the exact failure the
+   * drollery's extra rules exist to patch.
+   *
+   * ## Its health barely matters, and that is the honest finding
+   *
+   * Measured over 80 runs of a 3-ply bot at 6, 8, 10 and 14 health, the number
+   * that got past it went 49 / 48 / 47 / 43. Doubling its health moved the fight
+   * by six runs in eighty, because the fight is decided by the clock and by
+   * where you are standing, not by how long you hit it for. Ten, then, for the
+   * weight it gives the thing rather than for any balance it buys.
+   *
+   * Poise 3, like the drollery: a bare stroke will not stop it, so the margin
+   * has to be carrying something by the time you arrive.
+   */
+  carriageReturn: {
+    hp: 10,
+    dmg: 2,
+    poiseBreak: 3,
+    slow: false,
+    cost: 99, // never bought from a threat budget; placed by the boss floor
+    from: 8,
+    name: 'CARRIAGE RETURN',
+    tell: 'Strikes a band of rows, advances a line, and returns wider. Kill it before the page runs out.',
+  },
+  /*
    * THE DROLLERY — the grotesque a scribe drew in the margin, and the first
    * boss.
    *
@@ -185,7 +237,34 @@ export const ENEMY_ORDER: EnemyKind[] = [
   'typebar',
   'carriage',
   'drollery',
+  'carriageReturn',
 ];
+
+/**
+ * The band of rows struck on a given floor-turn, and how wide it has grown.
+ *
+ * Derived from the FLOOR CLOCK rather than from any state on the boss, so the
+ * page advances whether or not the machine was interrupted — see the note on
+ * `carriageReturn` for why that has to be true. It also means the band is a pure
+ * function of the turn number, which is what makes the fight's length something
+ * that can be reasoned about rather than measured.
+ *
+ * One pass is SIZE turns. Each completed pass adds a row to the band, so pass
+ * five covers the whole page and there is nowhere left to stand.
+ */
+export function bandAt(floorTurns: number): { rows: number[]; width: number; top: number } {
+  const t = Math.max(0, floorTurns);
+  const top = t % SIZE;
+  const width = Math.min(SIZE, 1 + Math.floor(t / SIZE));
+  // Wraps, so a band is always exactly `width` rows however near the foot of the
+  // page it starts — the paper is a loop, not a cliff.
+  const rows = Array.from({ length: width }, (_, i) => (top + i) % SIZE);
+  return { rows, width, top };
+}
+
+/** True on the turn the band has just run off the page and come back. */
+export const ringsBell = (floorTurns: number): boolean =>
+  floorTurns > 0 && floorTurns % SIZE === 0 && bandAt(floorTurns).width < SIZE;
 
 /**
  * Does this kind alternate STEPPING and STRIKING, rather than winding and acting?
@@ -309,6 +388,26 @@ function chargerPlan(e: Enemy, s: GameState, _rng: Rng): Intent {
 }
 
 /**
+ * THE CARRIAGE RETURN: a band of whole rows, struck where the page has reached.
+ *
+ * Its own tile is excluded like every other sweep — the machine is what strikes,
+ * not what is struck — which also leaves exactly one square of shelter beside it
+ * when the band would otherwise cover everything. That is not a loophole; it is
+ * the reason walking INTO the boss is the answer to the last pass.
+ */
+function carriageReturnPlan(e: Enemy, s: GameState): Intent {
+  const { rows } = bandAt(s.floorTurns);
+  const tiles: Vec[] = [];
+  for (const y of rows) {
+    for (let x = 0; x < SIZE; x++) {
+      if (x === e.pos.x && y === e.pos.y) continue;
+      tiles.push({ x, y });
+    }
+  }
+  return { kind: 'sweep', path: [], tiles };
+}
+
+/**
  * CARRIAGE: closes by LINING UP, not by getting nearer.
  *
  * A plain orthogonal chase is wrong for something that strikes a row, and the
@@ -429,6 +528,8 @@ export function planIntent(e: Enemy, s: GameState, rng: Rng): Intent {
     // Steps on one beat, sweeps on the next. `ready` is the beat.
     case 'carriage':
       return e.ready ? carriagePlan(e) : carriageStep(e, s, rng);
+    case 'carriageReturn':
+      return carriageReturnPlan(e, s);
   }
 }
 

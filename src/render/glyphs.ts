@@ -250,6 +250,57 @@ export const ENEMY_GLYPHS: Record<EnemyKind, GlyphDef> = {
     ],
     weight: 1.1,
   },
+  /*
+   * THE CARRIAGE RETURN — the lever, and the machine it throws.
+   *
+   * Built out of the CARRIAGE's own silhouette so the boss reads as the same
+   * family grown up: the same roller and rail, plus the long return lever
+   * sweeping up and left, which is the one part of a typewriter everyone can
+   * picture. Asymmetric on purpose — the DROLLERY is the only lopsided shape in
+   * era I for exactly this reason, because a shape that is not mirror-balanced
+   * reads as WRONG before it reads as anything, which is a boss's whole job at
+   * a glance.
+   */
+  carriageReturn: {
+    paths: [
+      // The roller, wider and heavier than the carriage's.
+      [
+        [-0.84, -0.22],
+        [0.84, -0.22],
+        [0.84, 0.3],
+        [-0.84, 0.3],
+        [-0.84, -0.22],
+      ],
+      [
+        [-0.34, -0.22],
+        [-0.34, 0.3],
+      ],
+      [
+        [0.34, -0.22],
+        [0.34, 0.3],
+      ],
+      // The rail.
+      [
+        [-0.96, 0.7],
+        [0.96, 0.7],
+      ],
+      [
+        [-0.84, 0.3],
+        [-0.84, 0.7],
+      ],
+      [
+        [0.84, 0.3],
+        [0.84, 0.7],
+      ],
+      // The return lever: up and out to the left, with a grip on the end.
+      [
+        [-0.6, -0.22],
+        [-0.72, -0.72],
+        [-0.16, -0.96],
+      ],
+    ],
+    weight: 1.25,
+  },
   stalker: {
     paths: [
       [

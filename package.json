@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "model": "vite-node scripts/model.ts",
+    "bench": "vite-node scripts/bench.ts",
     "check:swipe": "vite build && node scripts/swipe-check.mjs",
     "shots:brush": "node scripts/brush-shots.mjs",
     "shots:type": "node scripts/type-shots.mjs",

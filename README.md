@@ -213,6 +213,7 @@ physical misregistration, era III has neither.
 | Mark | loaded brush | struck typebar | raster glyph |
 | Ink | iron gall + gold | bichrome ribbon, black / red | green or amber |
 | Native kinds | — | TYPEBAR, CARRIAGE | — |
+| Boss | THE DROLLERY | THE CARRIAGE RETURN | — |
 | Threatens | tiles | **lines** | — |
 
 **I and II are built.** III still needs a mark-making system of its own — that is
@@ -286,6 +287,27 @@ Two rules make the duel terminate, and both were measured rather than guessed:
 
 Measured after both: **every bot dies 100% of the time**, and depth 4 is now
 where 23% of reactive runs end — the boss working as a gate.
+
+**THE CARRIAGE RETURN** waits on depth 8, and it needs none of that, because its
+clock *is* its attack. Every turn it strikes a band of rows, the band slides down
+a line, and when it runs off the foot of the page the bell rings and it returns
+**one row wider**. Five safe rows, then four, then three. By the fifth pass the
+band covers the whole board and there is nowhere to stand, so the fight is over
+by about turn twenty-five whatever anyone does — termination by arithmetic rather
+than by probability.
+
+The band is derived from the floor clock, not from the boss, and that is
+load-bearing: breaking its stance cancels the blow you were about to eat, but it
+does **not** stop the paper advancing. A boss whose clock you can pause by
+hitting it is a boss you can stall forever, which is the exact failure the
+drollery's two extra rules exist to patch.
+
+Its health barely matters, and that is the honest finding. Over 80 runs of a
+3-ply bot at 6 / 8 / 10 / 14 health, the number that got past it went
+**49 / 48 / 47 / 43** — doubling its health moved the fight by six runs in eighty,
+because the fight is decided by the clock and by where you are standing. It is a
+gate rather than a wall: 66% of 3-ply runs that reach it get through, against 27%
+of 2-ply ones.
 
 ## The floor
 

@@ -6,9 +6,11 @@ import {
   easeOutQuint,
   hash3,
   inkSplat,
+  strikeStroke,
   swashPath,
   type Pt,
 } from './ink';
+import type { Mark } from './glyphs';
 
 /**
  * Splatter, floating numbers, screenshake and hitstop.
@@ -76,6 +78,18 @@ export interface Ring {
 }
 
 export class Effects {
+  /**
+   * The era's instrument, pushed in by the renderer each frame.
+   *
+   * The effects layer was the last thing on the page still speaking era I in
+   * era II — reported from play as "the damage/exit reveal effects are still the
+   * same in type biome as in brush biome", and correctly. A struck page does not
+   * throw round droplets of ink and it does not unseal with a calligraphic
+   * flourish, so the three marks that carry a house style — the splatter, the
+   * swash and the floating numerals — each branch on this.
+   */
+  hand: Mark = 'brush';
+
   drops: Drop[] = [];
   texts: FloatText[] = [];
   rings: Ring[] = [];
@@ -305,8 +319,15 @@ export class Effects {
       ctx.save();
       ctx.globalAlpha = a;
       ctx.fillStyle = d.color;
-      blobPath(ctx, d.x, d.y, d.r * (1 - t * 0.25), d.seed, 0.5, 9);
-      ctx.fill();
+      const r = d.r * (1 - t * 0.25);
+      if (this.hand === 'type') {
+        // Struck flecks, not spilled ink: square, axis-aligned, the debris of a
+        // slug hitting paper rather than a droplet thrown off a wet brush.
+        ctx.fillRect(d.x - r, d.y - r * 0.72, r * 2, r * 1.44);
+      } else {
+        blobPath(ctx, d.x, d.y, r, d.seed, 0.5, 9);
+        ctx.fill();
+      }
       ctx.restore();
     }
   }
@@ -342,6 +363,26 @@ export class Effects {
       // Paint on fast, then hold and dry out.
       const progress = t < f.drawFor ? easeOutQuint(t / f.drawFor) : 1;
       const held = t < f.drawFor ? 0 : (t - f.drawFor) / (1 - f.drawFor);
+      const alpha = Math.min(1, 1.7 * (1 - held));
+
+      if (this.hand === 'type') {
+        /*
+         * A struck gesture is not a gesture — so the curve is drawn in hard,
+         * even segments with no swell and no drying tail, and it is REVEALED
+         * rather than painted, because a machine puts a mark down all at once.
+         */
+        const keep = Math.max(2, Math.ceil(f.pts.length * progress));
+        strikeStroke(ctx, f.pts.slice(0, keep), {
+          color: f.color,
+          width: f.width * 0.72,
+          seed: f.seed,
+          amp: f.width * 0.02,
+          alpha,
+          wear: 0.3 + held * 0.5,
+        });
+        continue;
+      }
+
       brushStroke(ctx, f.pts, {
         color: f.color,
         width: f.width,
@@ -349,7 +390,7 @@ export class Effects {
         amp: f.width * 0.16,
         // Hold at full for the first stretch, then drop away. A mark that begins
         // fading the instant it lands is never actually seen.
-        alpha: Math.min(1, 1.7 * (1 - held)),
+        alpha,
         progress,
         // Runs drier as it fades, so the tail breaks up rather than dimming.
         dryness: 0.35 + held * 0.9,
@@ -370,10 +411,22 @@ export class Effects {
       ctx.save();
       ctx.globalAlpha = p > 0.6 ? 1 - (p - 0.6) / 0.4 : 1;
       ctx.fillStyle = t.color;
-      ctx.font = `${t.weight > 1 ? '700 ' : '600 '}${Math.round(t.size * pop)}px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`;
+      // Set in the era's own letterform. A blood numeral in a Renaissance serif
+      // floating over a typed page is the same mistake as a gilt vine on one.
+      ctx.font =
+        this.hand === 'type'
+          ? `700 ${Math.round(t.size * pop * 0.92)}px ui-monospace, "SF Mono", Menlo, Consolas, monospace`
+          : `${t.weight > 1 ? '700 ' : '600 '}${Math.round(t.size * pop)}px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(t.text, t.x, t.y);
+      if (this.hand === 'type') {
+        // Off its line and off square, like everything else the machine prints.
+        ctx.translate(t.x, t.y);
+        ctx.rotate(-0.02);
+        ctx.fillText(t.text, 0, 0);
+      } else {
+        ctx.fillText(t.text, t.x, t.y);
+      }
       ctx.restore();
     }
   }

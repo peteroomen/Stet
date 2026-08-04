@@ -201,10 +201,21 @@ export const TRAITS: Trait[] = [
     once: true,
     rules: () => ({ killGrantsActions: 1 }),
   },
+  /*
+   * Named for the thing it gives you rather than for the paper it was first
+   * called after.
+   *
+   * "Foolscap" giving you "gesso" was two obscure words for one mechanic, and it
+   * was reported exactly that way: "explain foolscap/gesso, it's a mystery to
+   * me". Flavour is worth having; flavour you have to look up is a card the
+   * player cannot evaluate, and a choice you cannot evaluate is not a choice.
+   * The card is now called what the HUD calls the pip it adds, and the line says
+   * the whole rule in plain words.
+   */
   {
     id: 'foolscap',
-    name: 'Foolscap',
-    line: 'One more layer of gesso, laid over the page.',
+    name: 'Gesso',
+    line: 'A layer over the page. Takes a blow before your health does, and never heals back.',
     axis: 'defence',
     once: true,
     player: (p) => {

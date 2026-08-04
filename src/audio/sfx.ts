@@ -319,6 +319,21 @@ export class Sfx {
     this.tone({ dur: 0.4, type: 'sine', f0: 120, f1: 52, gain: 0.18, attack: 0.1 });
   }
 
+  /**
+   * The carriage bell. The one sound in the game that is good news and bad news
+   * at once — you survived a pass, and the next one is wider.
+   *
+   * A struck bell rather than a tone: two inharmonic partials over a fundamental,
+   * because a harmonic stack reads as a chime and a bell is not a chime. Long
+   * decay, so it rings over the top of whatever else the turn is doing.
+   */
+  bell(): void {
+    this.tone({ dur: 1.1, type: 'sine', f0: 1180, gain: 0.13, attack: 0.002 });
+    this.tone({ at: 0.004, dur: 0.9, type: 'sine', f0: 1767, gain: 0.07, attack: 0.002 });
+    this.tone({ at: 0.008, dur: 0.55, type: 'sine', f0: 2840, gain: 0.045, attack: 0.002 });
+    this.tone({ at: 0, dur: 0.09, type: 'square', f0: 3400, f1: 900, gain: 0.05 });
+  }
+
   pickup(): void {
     this.tone({ dur: 0.1, type: 'triangle', f0: 660, f1: 990, gain: 0.16 });
     this.tone({ at: 0.06, dur: 0.16, type: 'sine', f0: 1320, gain: 0.1 });

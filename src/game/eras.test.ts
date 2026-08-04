@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { makeSearchBrain, playRun } from './bots';
 import { chooseTrait, newGame, step } from './engine';
+import { bandAt, ringsBell } from './enemies';
 import { ERAS, ERA_FLOORS, eraAt, isAfterBoss, isBossFloor } from './eras';
+import { SIZE } from './grid';
 import { themeFor } from '../render/theme';
 import { SHIPPED } from './rules';
-import type { GameState } from './types';
+import type { Dir, GameState } from './types';
 
 /** Walk a fresh run down to `depth`, taking the first card on every hand. */
 function descendTo(depth: number, seed = 3): GameState {
@@ -167,6 +169,99 @@ describe('eras and the floors that end them', () => {
     expect(raw.offer.length).toBe(4);
     expect(lastOffer.length).toBe(3); // an ordinary descent is still three
     expect(s.depth).toBe(ERA_FLOORS + 1);
+  });
+
+  /**
+   * THE CARRIAGE RETURN — era II's boss, and the one whose fight terminates by
+   * arithmetic rather than by probability. The DROLLERY needed two rules bolted
+   * on to guarantee it ever ended; this one's clock IS its attack.
+   */
+  describe('the carriage return', () => {
+    it('waits on the last floor of era II', () => {
+      const s = descendTo(ERA_FLOORS * 2);
+      expect(s.depth).toBe(ERA_FLOORS * 2);
+      expect(s.enemies).toHaveLength(1);
+      expect(s.enemies[0].kind).toBe('carriageReturn');
+    });
+
+    it('advances one row a turn and comes back one row wider', () => {
+      // A pass is SIZE turns; each completed pass adds a row to the band.
+      expect(bandAt(0)).toMatchObject({ top: 0, width: 1, rows: [0] });
+      expect(bandAt(3)).toMatchObject({ top: 3, width: 1, rows: [3] });
+      expect(bandAt(5)).toMatchObject({ top: 0, width: 2, rows: [0, 1] });
+      expect(bandAt(9)).toMatchObject({ top: 4, width: 2 });
+      // The page is a loop, so a band near the foot wraps rather than truncating.
+      expect(bandAt(9).rows).toEqual([4, 0]);
+      expect(bandAt(10).width).toBe(3);
+    });
+
+    it('runs out of page, which is what makes the fight end', () => {
+      // By the fifth pass there is nowhere on the board left to stand.
+      expect(bandAt(SIZE * 4).width).toBe(SIZE);
+      expect(bandAt(SIZE * 4).rows.slice().sort()).toEqual([0, 1, 2, 3, 4]);
+      // And it does not keep growing past the size of the page.
+      expect(bandAt(SIZE * 20).width).toBe(SIZE);
+    });
+
+    it('rings the bell on the turn it returns, and not once the page is gone', () => {
+      expect(ringsBell(0)).toBe(false); // the very first band is not a return
+      expect(ringsBell(SIZE)).toBe(true);
+      expect(ringsBell(SIZE + 1)).toBe(false);
+      expect(ringsBell(SIZE * 3)).toBe(true);
+      // Nothing left to widen into, so nothing to announce.
+      expect(ringsBell(SIZE * 5)).toBe(false);
+    });
+
+    /*
+     * The rule the whole design rests on: hitting the machine stops the blow you
+     * were about to eat, and does NOT stop the paper. A boss whose clock you can
+     * pause by hitting it is a boss you can stall forever, which is the exact
+     * failure the drollery's two extra rules exist to patch.
+     */
+    it('keeps turning the page even while it is being interrupted', () => {
+      let s = descendTo(ERA_FLOORS * 2);
+      // Stood right next to it, so a stroke is available from the first turn —
+      // the loop below is about the clock, not about pathfinding.
+      const boss = s.enemies[0];
+      const beside = boss.pos.x > 0 ? { x: boss.pos.x - 1, y: boss.pos.y } : { x: 1, y: boss.pos.y };
+      s = { ...s, player: { ...s.player, pos: beside, hp: 99, maxHp: 99, dmg: 9 } };
+
+      const DIRS: Dir[] = ['left', 'right', 'up', 'down'];
+      const widthAtStart = bandAt(s.floorTurns).width;
+      let struck = 0;
+
+      for (let i = 0; i < SIZE * 3 && s.screen === 'playing'; i++) {
+        const e = s.enemies[0];
+        if (!e) break;
+        // Pinned at full health, so the only thing that can end this loop is the
+        // clock — and the boss is hit whenever it is in reach.
+        s = { ...s, enemies: [{ ...e, hp: e.maxHp }] };
+
+        // Prefer a stroke, but take ANY move that spends a turn: a direction
+        // that is merely a wall costs nothing and would spin this loop forever.
+        const tried = DIRS.map((d) => ({ d, r: step(s, d) })).filter((x) => x.r.spent);
+        if (tried.length === 0) break;
+        const hit = tried.find((x) => x.r.events.some((ev) => ev.t === 'bump'));
+        if (hit) struck++;
+        s = (hit ?? tried[0]).r.state;
+      }
+
+      expect(struck).toBeGreaterThan(0); // it really was being interrupted
+      expect(bandAt(s.floorTurns).width).toBeGreaterThan(widthAtStart);
+    });
+
+    it('ends on its own, against a player who only runs away', () => {
+      let s = descendTo(ERA_FLOORS * 2);
+      let turns = 0;
+      for (; turns < 200 && s.screen === 'playing'; turns++) {
+        // Never strike, never approach — just weave. The drollery had to be
+        // given rules to stop this working; this one does not.
+        const r = step(s, (['up', 'down', 'left', 'right'] as Dir[])[turns % 4]);
+        if (r.spent) s = r.state;
+      }
+      expect(s.screen).toBe('dead');
+      expect(turns).toBeLessThan(200);
+    });
   });
 
   it('is beatable, and runs still end', () => {

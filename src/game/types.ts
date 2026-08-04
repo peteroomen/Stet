@@ -21,7 +21,8 @@ export type EnemyKind =
   | 'warden'
   | 'drollery'
   | 'typebar'
-  | 'carriage';
+  | 'carriage'
+  | 'carriageReturn';
 export type ItemKind = 'vial' | 'nib' | 'gesso';
 
 /**
@@ -191,6 +192,100 @@ export interface GameState {
   offer: string[];
 }
 
+/**
+ * A deep copy of a board, for `step()` to mutate freely.
+ *
+ * This is a hand-written `structuredClone`, and it is here because it is by far
+ * the hottest thing in the project. `step()` is pure, so every call copies the
+ * whole state — and the N-ply bots call `step()` exponentially, four times per
+ * ply. Measured on a mid-game board:
+ *
+ *   structuredClone            23.3 µs
+ *   everything else in step()   0.1 µs
+ *
+ * The clone was **99.4%** of a turn. It is also what the previews pay four times
+ * over on every real input, so this is not only a test-suite concern.
+ *
+ * Written out longhand rather than generically on purpose. A `for…in` copy would
+ * be nearly as slow (the cost is the generic traversal, not the allocation), and
+ * a shallow spread would silently alias the arrays — which in a mutating engine
+ * is the worst possible bug: a bot's hypothetical move would edit the real board.
+ * `cloneState.test.ts` checks this against `structuredClone` for deep equality
+ * AND for non-aliasing across every field, so adding a field without adding it
+ * here fails a test rather than corrupting a run.
+ */
+export function cloneState(s: GameState): GameState {
+  const p = s.player;
+  return {
+    screen: s.screen,
+    depth: s.depth,
+    turn: s.turn,
+    floorTurns: s.floorTurns,
+    grace: s.grace,
+    player: {
+      pos: { x: p.pos.x, y: p.pos.y },
+      hp: p.hp,
+      maxHp: p.maxHp,
+      dmg: p.dmg,
+      exposed: p.exposed,
+      combo: p.combo,
+      flow: p.flow,
+      ink: p.ink,
+      ward: p.ward,
+      trail: p.trail.map((v) => ({ x: v.x, y: v.y })),
+      facing: p.facing,
+    },
+    enemies: s.enemies.map((e) => ({
+      id: e.id,
+      kind: e.kind,
+      pos: { x: e.pos.x, y: e.pos.y },
+      hp: e.hp,
+      maxHp: e.maxHp,
+      ready: e.ready,
+      struck: e.struck,
+      poise: e.poise,
+      intent: cloneIntent(e.intent),
+      seed: e.seed,
+    })),
+    items: s.items.map((i) => ({
+      id: i.id,
+      kind: i.kind,
+      pos: { x: i.pos.x, y: i.pos.y },
+      seed: i.seed,
+    })),
+    blots: s.blots.map((b) => ({ x: b.x, y: b.y })),
+    stairs: { x: s.stairs.x, y: s.stairs.y },
+    stairsOpen: s.stairsOpen,
+    rng: s.rng,
+    nextId: s.nextId,
+    stats: { ...s.stats },
+    // Rules are immutable by contract — a trait builds a NEW object rather than
+    // editing one (see `applyTraitRules`), so this reference is safe to share and
+    // copying it would be pure waste on the hottest path in the game.
+    rules: s.rules,
+    chain: s.chain,
+    floorHpLost: s.floorHpLost,
+    floorHpRallied: s.floorHpRallied,
+    spillClock: s.spillClock,
+    floorWaits: s.floorWaits,
+    traits: s.traits.slice(),
+    offer: s.offer.slice(),
+  };
+}
+
+function cloneIntent(i: Intent): Intent {
+  switch (i.kind) {
+    case 'move':
+      return { kind: 'move', path: i.path.map((v) => ({ x: v.x, y: v.y })) };
+    case 'sweep':
+      return { kind: 'sweep', path: [], tiles: i.tiles.map((v) => ({ x: v.x, y: v.y })) };
+    case 'wind':
+      return { kind: 'wind', path: [] };
+    case 'hold':
+      return { kind: 'hold', path: [] };
+  }
+}
+
 /** Which half of the turn an event belongs to — the renderer schedules from this. */
 export type EvPhase = 'p' | 'e';
 
@@ -238,6 +333,14 @@ export type Ev =
   | { t: 'pickup'; phase: EvPhase; pos: Vec; kind: ItemKind; amount: number }
   | { t: 'stagger'; phase: EvPhase; id: number; kind: EnemyKind; pos: Vec; interrupted: boolean }
   | { t: 'spill'; phase: EvPhase; pos: Vec; kind: EnemyKind }
+  /**
+   * The carriage has run off the end of the page and come back.
+   *
+   * Its own event because it is the boss's one piece of teaching: the bell is
+   * what tells you the band just got wider, and a player who never learns that
+   * is a player who thinks the fight got unfair rather than that it advanced.
+   */
+  | { t: 'bell'; phase: EvPhase; pos: Vec; width: number }
   /**
    * The page filled with nowhere left to put it, so it filled over you.
    *
