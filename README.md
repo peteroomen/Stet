@@ -367,6 +367,21 @@ The first four are era I and carry into every era after it. The last two are era
 II's own, and they are the reason it is a different place: era I threatens
 **tiles**, so every dodge in it is a sidestep. A machine threatens **lines**.
 
+**The era is audible, too.** Four sounds branch on the hand — the step, the
+strike, the interrupt and the spill — and the floor drone changes timbre with
+them. A nib scratch *sweeps*, because a pen is still moving while it makes its
+mark; a key is over before the sweep would have started. A brush strike is wet,
+with a paper-tear transient; a typebar is a hard slap, a short inharmonic ring
+off the slug, and a thud through the platen behind it. The interrupt becomes keys
+jamming, the spill becomes the machine typing by itself, and the bowed drone
+becomes a motor. Only four branch: a palette where nothing is constant stops
+being a palette.
+
+`npm run check:audio` fires every event in **every era**. It cannot tell you
+whether any of it sounds good — only a person can — but it proves each node graph
+builds and each envelope is legal, and an illegal envelope throws in the middle
+of a turn rather than in a test.
+
 **Every kind declares a home era**, and a test asserts no era rolls another
 era's natives. The question that prompted it was the right one: should a CARRIAGE
 turn up in a word-processor era? No — it is a piece of a typewriter, and an era

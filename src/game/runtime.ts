@@ -166,9 +166,14 @@ export class Runtime {
    * leaves the frame around the board in the manuscript's gold while the board
    * itself has gone to steel, which reads as a bug rather than as a place.
    */
-  private syncChrome(): void {
-    this.chromeEra = eraAt(this.state.depth).id;
-    applyThemeVars(this.themeName, eraAt(this.state.depth).palette);
+  private syncChrome(depth = this.state.depth): void {
+    const era = eraAt(depth);
+    this.chromeEra = era.id;
+    applyThemeVars(this.themeName, era.palette);
+    // The synth speaks the era too — a nib on paper is the wrong fiction the
+    // moment the page becomes a typed one.
+    sfx.hand = era.hand;
+    sfx.setDroneHand();
   }
 
   get muted(): boolean {
@@ -230,6 +235,9 @@ export class Runtime {
     this.queued = null;
     this.effects.reset();
     this.renderer.invalidatePaper();
+    // Back to page one, so back to the first era's page AND its palette of
+    // sounds — a new run started inside era II's synth would open wrong.
+    this.syncChrome();
     sfx.startDrone(this.state.depth);
     sfx.setDroneDepth(this.state.depth);
     sfx.descend(this.state.depth);
@@ -346,6 +354,9 @@ export class Runtime {
     this.queued = null;
     this.effects.reset();
     this.renderer.invalidatePaper();
+    // Back to page one, so back to the first era's page AND its palette of
+    // sounds — a new run started inside era II's synth would open wrong.
+    this.syncChrome();
     sfx.startDrone(this.state.depth);
     sfx.setDroneDepth(this.state.depth);
     this.pushHud();
@@ -619,10 +630,10 @@ export class Runtime {
       }
 
       case 'descend': {
+        // Era first: `descend` retunes the drone, and it should be retuned as
+        // the thing the new era sounds like rather than the old one.
+        if (eraAt(ev.depth).id !== this.chromeEra) this.syncChrome(ev.depth);
         sfx.descend(ev.depth);
-        // A descent can carry you into a new era, and the chrome is not on the
-        // canvas — it will not follow unless it is told.
-        if (eraAt(ev.depth).id !== this.chromeEra) this.syncChrome();
         this.effects.clearStains();
         fx.addFlash(0.16, t.paper);
 
