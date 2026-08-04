@@ -306,7 +306,44 @@ describe('wear', () => {
     expect(s.player.ink).toBeLessThanOrEqual(24);
   });
 
-  it('forgets everything the moment you commit to a stroke', () => {
+  it('forgets everything the moment you land a KILL', () => {
+    const base = worn({
+      enemies: [
+        {
+          id: 1,
+          kind: 'rat',
+          pos: { x: 3, y: 2 },
+          hp: 1,
+          maxHp: 1,
+          ready: false,
+          struck: false,
+          poise: true,
+          intent: { kind: 'hold', path: [] },
+          seed: 3,
+        },
+      ],
+    });
+    let s = step(base, 'up').state; // (2,1)
+    s = step(s, 'down').state; // back to (2,2): charged
+    expect(s.player.ink).toBeLessThan(40);
+    expect(s.player.trail.length).toBeGreaterThan(1);
+
+    s = step(s, 'right').state; // kill the rat
+    // The page keeps only the tile you demonstrably still occupy, and the kill
+    // also gives ink back — both are the reward for actually finishing something.
+    expect(s.player.trail).toEqual([{ x: 2, y: 2 }]);
+    expect(s.player.ink).toBe(40);
+
+    // (2,1) was remembered before the kill and is not any more.
+    const after = step(s, 'up').state;
+    expect(after.player.ink).toBe(40);
+  });
+
+  /**
+   * Clearing on any stroke was launderable: strike-move-strike-move never builds
+   * a trail, so on a crowded board wear cost nothing at all. Only a kill clears.
+   */
+  it('is NOT cleared by a stroke that merely lands', () => {
     const base = worn({
       enemies: [
         {
@@ -324,16 +361,11 @@ describe('wear', () => {
       ],
     });
     let s = step(base, 'up').state; // (2,1)
-    s = step(s, 'down').state; // back to (2,2): charged
-    const afterPacing = s.player.ink;
-    expect(afterPacing).toBeLessThan(40);
-
-    s = step(s, 'right').state; // strike the warden — clears the trail
-    // Everything is forgotten except the tile you are standing on, which you
-    // demonstrably still occupy.
-    expect(s.player.trail).toEqual([{ x: 2, y: 2 }]);
-    s = step(s, 'up').state; // (2,1) again, but the page has forgotten
-    expect(s.player.ink).toBe(afterPacing);
+    s = step(s, 'right').state; // swing at the warden, does not kill it
+    expect(s.player.trail.length).toBeGreaterThan(1);
+    const before = s.player.ink;
+    s = step(s, 'down').state; // back to (2,2), still remembered
+    expect(s.player.ink).toBeLessThan(before);
   });
 
   it('is inert while the rules leave it off', () => {

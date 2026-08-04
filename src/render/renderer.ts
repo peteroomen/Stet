@@ -684,6 +684,7 @@ export class Renderer {
     this.drawBlots(ctx, g, state, boil);
     this.drawStairs(ctx, g, state, boil, wallClock);
     this.drawItems(ctx, g, state, boil, wallClock);
+    this.drawTrail(ctx, g, state);
     this.drawTelegraphs(ctx, g, state, clock, anim, boil, wallClock, moves);
     this.drawEnemies(ctx, g, state, anim, clock, boil, moves);
     this.drawHero(ctx, g, state, anim, clock, boil);
@@ -849,6 +850,38 @@ export class Renderer {
    * UNDER the actors (never obscuring a silhouette) and colour-coded: ink for a
    * step, blood for a blow that lands on you.
    */
+  /**
+   * The ink you have already left on the page.
+   *
+   * WEAR charges for stepping onto paper you have marked, so the marks have to
+   * be ON the paper — a cost the player cannot see is a cost they cannot avoid,
+   * and the whole point of this mechanic is that it is avoidable.
+   *
+   * Drawn as a smudge rather than a symbol: a faint darkening of the tile,
+   * heaviest where you most recently stood and fading back through the trail.
+   * It reads as texture the way the foxing and the paper wash do, so it costs
+   * the board nothing in legibility — which is exactly the argument for choosing
+   * this over adding more bodies to it.
+   */
+  private drawTrail(ctx: CanvasRenderingContext2D, g: Geometry, s: GameState): void {
+    const trail = s.player.trail;
+    if (s.rules.wearMemory <= 0 || trail.length === 0) return;
+
+    ctx.save();
+    for (let i = 0; i < trail.length; i++) {
+      const [cx, cy] = centerOf(g, trail[i]);
+      // Freshest smudge is darkest; the oldest is nearly gone, which also tells
+      // you which ones are about to stop costing anything.
+      const age = 1 - i / Math.max(1, trail.length);
+      ctx.globalAlpha = 0.05 + age * 0.07;
+      ctx.fillStyle = this.theme.grain;
+      ctx.beginPath();
+      ctx.arc(cx, cy, g.cell * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   private drawTelegraphs(
     ctx: CanvasRenderingContext2D,
     g: Geometry,

@@ -238,6 +238,20 @@ export interface Rules {
  * So it costs nothing measurable, and it buys the fix for a real hole — see
  * `scripts/forced.ts`.
  *
+ * On WEAR: it was shipped and then unshipped inside an hour, which is worth
+ * recording. The endorsing numbers — reacting 5.3 to 6.0, the gap tightening —
+ * were produced by an EXPLOIT in the mechanic rather than by the mechanic. Any
+ * stroke cleared the trail, so strike-move-strike-move never accumulated one at
+ * all, and on a crowded board that costs nothing forever. With the hole closed
+ * (only a KILL clears) a reactive player measures 4.3 against a shipped 5.3.
+ *
+ * The lesson is the same one the ink-blind harness taught, in a different
+ * costume: a favourable number is a hypothesis about WHY it is favourable, and
+ * that hypothesis needs checking before anything ships on it.
+ *
+ * The flat fade, which charged for TIME rather than for retracing, is a
+ * diagnostic and stays off. See FADE below for why it fails.
+ *
  * On the marginalia: a card every descent, paid for by coupling the spill to how
  * many you have taken. Eight to ten permanent upgrades is a great deal of power
  * and the harness says so — the layer alone takes a reactive player 3.9 to 6.2
@@ -275,10 +289,10 @@ export const SHIPPED: Rules = {
   traitsPerDescent: 3,
   maxTraits: 6,
   fadeMax: 0,
-  fadePerAction: 1,
+  fadePerAction: 0,
   fadePerKill: 8,
-  wearMemory: 0,
-  wearCost: 4,
+  wearMemory: 6,
+  wearCost: 8,
   spillPerTraits: 4,
   spillBase: 5,
   spillRampTurns: 0,
@@ -486,10 +500,10 @@ export const TRAITS_P4 = variant({
   traitsPerDescent: 3,
   maxTraits: 6,
   fadeMax: 0,
-  fadePerAction: 1,
+  fadePerAction: 0,
   fadePerKill: 8,
-  wearMemory: 0,
-  wearCost: 4,
+  wearMemory: 6,
+  wearCost: 8,
   spillPerTraits: 4,
 });
 

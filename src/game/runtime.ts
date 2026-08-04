@@ -26,6 +26,14 @@ export interface Hud {
   maxHp: number;
   /** GESSO layers. Take blows first and can never be mended. */
   ward: number;
+  /**
+   * Retraces left before you wear through the page, or null when WEAR is off.
+   *
+   * Reported in RETRACES rather than raw ink, because that is the unit the
+   * player actually spends: fresh paper is free, and every revisit costs exactly
+   * one. A bar counting down in eights would be arithmetic; this is a count.
+   */
+  retraces: number | null;
   dmg: number;
   exposed: boolean;
   /** Whether HOLD is offered at all. See Rules.allowWait.  */
@@ -47,6 +55,8 @@ export interface Hud {
   kills: number;
   turns: number;
   best: number;
+  /** Ended by wearing through the page rather than by a blow. */
+  faded: boolean;
   /** Turns of quiet left before the page starts filling; 0 once it has begun. */
   graceLeft: number;
   spilling: boolean;
@@ -63,6 +73,10 @@ function hudOf(s: GameState, best: number): Hud {
     hp: s.player.hp,
     maxHp: s.player.maxHp,
     ward: s.player.ward,
+    retraces:
+      s.rules.fadeMax > 0 && s.rules.wearMemory > 0
+        ? Math.max(0, Math.ceil(s.player.ink / Math.max(1, s.rules.wearCost)))
+        : null,
     dmg: s.player.dmg,
     exposed: s.player.exposed,
     canWait: s.rules.allowWait,
@@ -75,6 +89,7 @@ function hudOf(s: GameState, best: number): Hud {
     kills: s.stats.kills,
     turns: s.stats.turns,
     best,
+    faded: s.screen === 'dead' && s.player.hp > 0,
     graceLeft: Math.max(0, s.grace - s.floorTurns),
     spilling: s.floorTurns >= s.grace && s.enemies.length > 0,
     traits: [...s.traits],

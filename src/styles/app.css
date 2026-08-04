@@ -156,6 +156,30 @@ body {
   font-weight: 700;
 }
 
+/*
+ * How much page you have left to retrace over. Sits with the hearts because it
+ * is the second way a run ends, and goes blood-red on the last one.
+ */
+.retraces {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--ghost);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.retraces b {
+  color: var(--inkSoft);
+  font-weight: 700;
+}
+
+.retraces--worn,
+.retraces--worn b {
+  color: var(--blood);
+  animation: breathe 900ms ease-in-out infinite;
+}
+
 /* ---------------------------------------------------------------- state -- */
 
 .state {

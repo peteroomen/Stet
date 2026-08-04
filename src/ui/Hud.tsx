@@ -38,6 +38,20 @@ export function Hud({ hud, onShowTraits }: { hud: HudData; onShowTraits: () => v
 
       <Pips hp={hud.hp} maxHp={hud.maxHp} ward={hud.ward} />
 
+      {/*
+        Retraces left. Counted rather than shown as a bar, because that is the
+        unit actually spent — fresh paper is free and every revisit costs one.
+      */}
+      {hud.retraces !== null && (
+        <span
+          className={`retraces${hud.retraces <= 1 ? ' retraces--worn' : ''}`}
+          title="Steps you can retrace before wearing through the page"
+        >
+          <span aria-hidden="true">≈</span>
+          <b>{hud.retraces}</b>
+        </span>
+      )}
+
       <div className="hud__slot hud__slot--right">
         {/*
           What you have written in the margin, and a way back to reading it. An

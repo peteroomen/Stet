@@ -454,10 +454,22 @@ export function step(state: GameState, action: Action): StepResult {
         d.enemies = [];
       }
 
-      // A kill is ink back on the page. This is the design's oldest thesis said
-      // outright — aggression sustains you — where the spill only ever said it
-      // in the negative.
+      /*
+       * A kill is ink back on the page, and it clears the trail.
+       *
+       * A KILL, not a swing. Clearing on any stroke was launderable and the
+       * harness found it immediately: strike-move-strike-move never accumulates
+       * a trail at all, so on a crowded board — where there is always something
+       * to swing at — wear costs nothing forever. Measured, one run in sixty sat
+       * at depth 31 with seventeen bodies on the board, one health, and a FULL
+       * charge of ink after three and a half thousand turns on the floor.
+       *
+       * Killing is bounded by what is actually there to kill, so it cannot be
+       * farmed the same way — and it says the design's oldest thesis outright:
+       * aggression that accomplishes something sustains you.
+       */
       if (r.fadeMax > 0) p.ink = Math.min(r.fadeMax, p.ink + r.fadePerKill);
+      p.trail = [];
 
       // RALLY: a kill wins back health lost on this floor, and nothing more.
       // Capped per floor so the spill cannot be farmed into an HP fountain.
@@ -486,9 +498,6 @@ export function step(state: GameState, action: Action): StepResult {
         return { state: d, events: ev, spent: true };
       }
     }
-    // Commit to a fight and the page forgets where you have been. WEAR charges
-    // for pacing, and a stroke is the opposite of pacing.
-    p.trail = [];
     // You do NOT advance into the tile. A bump attack is a swing, not a step.
   } else if (!waiting) {
     p.exposed = false;
