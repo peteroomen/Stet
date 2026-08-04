@@ -1,6 +1,6 @@
 import {
   ENEMY_STATS,
-  bandAt,
+  pageAt,
   intentThreatens,
   makeEnemy,
   planIntent,
@@ -439,7 +439,8 @@ function execIntent(e: Enemy, d: GameState, ev: Ev[]): void {
         t: 'bell',
         phase: 'e',
         pos: { ...e.pos },
-        width: bandAt(d.floorTurns + 1).width,
+        // How much clear paper is left, which is what the bell is announcing.
+        width: pageAt(d.floorTurns + 1).shelter * 2 + 1,
       });
     }
     return;

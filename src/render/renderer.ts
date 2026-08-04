@@ -589,18 +589,23 @@ function decorate(
 }
 
 /**
- * II · the typed margin: a steel band and a single red stop rule.
+ * II · the typed margin: brass pinstriping and turned screw-heads.
  *
- * The first version added tab ticks along the head as well, and it was reported
- * straight back as crowded and less beautiful than the gold it replaced — which
- * it was. The gilding's elegance never came from the vine; it came from a BRIGHT
- * RULE OVER A SHADOWED ONE, which is what reads as metal rather than as a
- * coloured line. So era II keeps exactly that and changes the metal: steel
- * instead of leaf, and no foliage on it, because a typed page is not decorated.
+ * Two earlier versions and what each taught:
  *
- * What it adds is one mark and one only — the red margin stop. It is the single
- * thing a typist actually puts outside the text block, it is the ribbon's own
- * second colour, and one line is not crowding.
+ *   tab ticks across the head   crowded, and less beautiful than the gold
+ *   a plain steel band          did not pop — grey has almost no chroma, so it
+ *                               read as absence rather than as material
+ *
+ * Brass fixes the colour. But brass ALONE would have read as dim gold, which is
+ * worse than either, so the shape changes with it: era I's margin is a grown
+ * thing — a vine with leaves and scrolled volutes — and this one is a MADE one.
+ * A fine pinstripe pair, the way a machine of this period was lined out by hand,
+ * and a turned screw-head at each corner where the frame is bolted together.
+ * Same material family as the gold, an entirely different hand.
+ *
+ * Intricate at the corners and empty along the edges, which is the answer to the
+ * crowding: detail earns its place where the eye already goes.
  */
 function typeset(
   ctx: CanvasRenderingContext2D,
@@ -618,20 +623,60 @@ function typeset(
   const bx1 = x1 + m;
   const by1 = y1 + m;
 
-  // The same two-tone band the illumination uses, in the machine's material.
-  // Tighter and a shade quieter: steel catches less light than gold leaf.
+  // The pinstripe pair: a heavier rule with a hairline running just inside it.
+  // Struck rather than drawn, so it is the one straight thing on the page.
   ctx.save();
-  ctx.globalAlpha = 0.5;
-  ctx.strokeStyle = theme.leafDeep;
-  ctx.lineWidth = g.cell * 0.034;
-  ctx.strokeRect(bx0, by0, bx1 - bx0, by1 - by0);
-  ctx.globalAlpha = 0.62;
+  ctx.globalAlpha = 0.85;
   ctx.strokeStyle = theme.leaf;
-  ctx.lineWidth = g.cell * 0.016;
-  ctx.strokeRect(bx0 - 1, by0 - 1, bx1 - bx0, by1 - by0);
+  ctx.lineWidth = g.cell * 0.026;
+  ctx.strokeRect(bx0, by0, bx1 - bx0, by1 - by0);
+  const inset = g.cell * 0.055;
+  ctx.globalAlpha = 0.6;
+  ctx.strokeStyle = theme.leafDeep;
+  ctx.lineWidth = Math.max(1, g.cell * 0.012);
+  ctx.strokeRect(bx0 + inset, by0 + inset, bx1 - bx0 - inset * 2, by1 - by0 - inset * 2);
   ctx.restore();
 
-  // The margin stop. Full height, because that is what a margin is.
+  /*
+   * A turned screw-head at each corner: a brass disc, a darker rim, and the
+   * slot cut across it at its own angle — no two screws in a machine were ever
+   * driven to the same rotation, and that is the whole charm of the detail.
+   */
+  const heads: [number, number][] = [
+    [bx0, by0],
+    [bx1, by0],
+    [bx1, by1],
+    [bx0, by1],
+  ];
+  heads.forEach(([cx, cy], i) => {
+    const r = Math.min(g.cell * 0.115, g.pad * 0.3);
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = theme.leaf;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.8;
+    ctx.strokeStyle = theme.leafDeep;
+    ctx.lineWidth = Math.max(1, r * 0.22);
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.86, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.rotate(hash3(seed + 55, i, 0) * Math.PI);
+    ctx.globalAlpha = 0.9;
+    ctx.lineWidth = Math.max(1, r * 0.26);
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.62, 0);
+    ctx.lineTo(r * 0.62, 0);
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  // The margin stop, still the one mark a typist puts outside the text block.
   strikeStroke(ctx, [[x0 - m * 0.5, by0 - g.cell * 0.1], [x0 - m * 0.5, by1 + g.cell * 0.1]] as Pt[], {
     color: theme.blood,
     width: Math.max(1, g.cell * 0.018),

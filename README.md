@@ -300,26 +300,37 @@ Two rules make the duel terminate, and both were measured rather than guessed:
 Measured after both: **every bot dies 100% of the time**, and depth 4 is now
 where 23% of reactive runs end — the boss working as a gate.
 
-**THE CARRIAGE RETURN** waits on depth 8, and it needs none of that, because its
-clock *is* its attack. Every turn it strikes a band of rows, the band slides down
-a line, and when it runs off the foot of the page the bell rings and it returns
-**one row wider**. Five safe rows, then four, then three. By the fifth pass the
-band covers the whole board and there is nowhere to stand, so the fight is over
-by about turn twenty-five whatever anyone does — termination by arithmetic rather
-than by probability.
+**THE CARRIAGE RETURN** waits on page 8, and it needs none of that, because its
+clock *is* its attack. It strikes everything except a **shelter**, and the
+shelter is two things at once: a lane that travels down the page and back up,
+one row every other turn, ringing the bell at each margin — and a stretch of that
+lane measured out from the machine's own column, closing by one every five turns.
 
-The band is derived from the floor clock, not from the boss, and that is
+So the safe ground converges **on the boss**. Late in the fight the only place to
+stand is within reach of it, which is where you wanted to be anyway. Shelter
+reaches zero at turn twenty-five and the only unstruck square is the one the boss
+is standing on, so the deadline is intact and the fight still terminates by
+arithmetic.
+
+The first version was the other way round — a band of struck rows that *grew*
+until it covered the page — and it was played and reported back as *"only ok
+since it's just a damage race"*, which was exactly right. Once the band covers
+everything there is no dodge, so the only strategy left is to have out-damaged
+it, and a fight with one strategy is a stat check. Stated as a shelter instead,
+every turn has a dodge in it until the very last one:
+
+| | band | shelter |
+|---|---|---|
+| 2-ply runs that get past it | 27% | **52%** |
+| 3-ply runs that get past it | 66% | **89%** |
+
+Skill now beats it. That was the whole point.
+
+The shelter is derived from the floor clock, not from the boss, and that is
 load-bearing: breaking its stance cancels the blow you were about to eat, but it
-does **not** stop the paper advancing. A boss whose clock you can pause by
-hitting it is a boss you can stall forever, which is the exact failure the
-drollery's two extra rules exist to patch.
-
-Its health barely matters, and that is the honest finding. Over 80 runs of a
-3-ply bot at 6 / 8 / 10 / 14 health, the number that got past it went
-**49 / 48 / 47 / 43** — doubling its health moved the fight by six runs in eighty,
-because the fight is decided by the clock and by where you are standing. It is a
-gate rather than a wall: 66% of 3-ply runs that reach it get through, against 27%
-of 2-ply ones.
+does **not** stop the paper closing. A boss whose clock you can pause by hitting
+it is a boss you can stall forever — the exact failure the drollery's two extra
+rules exist to patch.
 
 ## The floor
 

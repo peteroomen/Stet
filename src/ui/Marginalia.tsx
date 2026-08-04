@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { eraAt, eraNumeral, isEraOpening } from '../game/eras';
 import { TRAIT_BY_ID } from '../game/traits';
 
 /**
@@ -20,6 +21,8 @@ export function TraitOffer({
   depth: number;
   onTake: (id: string) => void;
 }) {
+  const opening = isEraOpening(depth);
+
   // 1 / 2 / 3 take a card, so the whole game stays keyboard operable.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -36,7 +39,23 @@ export function TraitOffer({
   return (
     <div className="overlay overlay--cards">
       <div className="panel">
-        <p className="cards__depth">Page {depth}</p>
+        {/*
+          Name the era on the hand where you enter it.
+          
+          This was first drawn on the BOARD, and it was never once visible: the
+          first floor of an era is by definition the floor after a boss, so the
+          card hand is always up over the top of it. The hand is the ceremony of
+          a descent anyway — naming the era here costs nothing and cannot be
+          missed.
+        */}
+        {opening ? (
+          <p className="cards__era">
+            <span className="cards__eraNum">{eraNumeral(depth)}</span>
+            {eraAt(depth).name}
+          </p>
+        ) : (
+          <p className="cards__depth">Page {depth}</p>
+        )}
         <h2 className="cards__title">The margin</h2>
         <div className="cards">
           {ids.map((id, i) => {

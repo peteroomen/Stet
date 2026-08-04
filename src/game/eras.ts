@@ -105,6 +105,17 @@ export function isBossFloor(depth: number): boolean {
   return depth > 0 && depth % ERA_FLOORS === 0;
 }
 
+/** The first floor of an era — the one worth naming as you arrive on it. */
+export function isEraOpening(depth: number): boolean {
+  return depth > 1 && (depth - 1) % ERA_FLOORS === 0;
+}
+
+/** How an era numbers itself in the margin. */
+export function eraNumeral(depth: number): string {
+  const i = Math.floor((Math.max(1, depth) - 1) / ERA_FLOORS);
+  return ['I', 'II', 'III', 'IV', 'V'][Math.min(i, 4)] ?? String(i + 1);
+}
+
 /** True on the floor you arrive at straight after beating a boss. */
 export function isAfterBoss(depth: number): boolean {
   return depth > 1 && isBossFloor(depth - 1);

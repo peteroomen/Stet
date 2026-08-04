@@ -27,11 +27,31 @@ await page.goto(base, { waitUntil: 'networkidle' });
 await page.click('.btn');
 await page.waitForTimeout(400);
 
-for (const [name, depth] of [['manuscript', 3], ['typewriter', 6], ['boss', 8]]) {
+for (const [name, depth] of [['manuscript', 3], ['typewriter', 6], ['boss', 8], ['opening', 5]]) {
   await page.evaluate((d) => {
     const rt = window.__stet;
     const mk = (id, kind, x, y, ready) => ({ id, kind, pos: { x, y }, hp: 3, maxHp: 5, ready, struck: false, poise: true, intent: { kind: 'hold', path: [] }, seed: id * 17 + 3 });
     const boss = d === 8;
+    if (d === 5) {
+      /*
+       * A REAL descent from the last floor of era I into the first of era II.
+       * Faking the cue left the board showing the previous fixture, which is
+       * exactly the sort of thing a screenshot is for catching.
+       */
+      const st = rt.state.stairs;
+      const above = st.y > 0;
+      rt.state = {
+        ...rt.state,
+        depth: 4,
+        screen: 'playing',
+        enemies: [],
+        stairsOpen: true,
+        player: { ...rt.state.player, pos: { x: st.x, y: above ? st.y - 1 : st.y + 1 } },
+      };
+      rt.clock = 1e9;
+      rt.input(above ? 'down' : 'up');
+      return;
+    }
     rt.state = { ...rt.state, depth: d, blots: boss ? [] : [{ x: 1, y: 3 }], stairsOpen: false,
       // Well into the fight, so the band has widened and the bell has rung twice.
       floorTurns: boss ? 10 : 0, floorWaits: 0,
@@ -43,7 +63,7 @@ for (const [name, depth] of [['manuscript', 3], ['typewriter', 6], ['boss', 8]])
     rt.clock = 1e9;
     rt.input(boss ? 'left' : 'wait');
   }, depth);
-  await page.waitForTimeout(1100);
+  await page.waitForTimeout(name === 'opening' ? 260 : 1100);
   await page.screenshot({ path: join(OUT, `era-${name}.png`) });
   console.log(`wrote shots/era-${name}.png`);
 }

@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { makeSearchBrain, playRun } from './bots';
 import { chooseTrait, newGame, step } from './engine';
-import { bandAt, ringsBell } from './enemies';
-import { ERAS, ERA_FLOORS, eraAt, isAfterBoss, isBossFloor } from './eras';
+import { pageAt, ringsBell } from './enemies';
+import {
+  ERAS,
+  ERA_FLOORS,
+  eraAt,
+  eraNumeral,
+  isAfterBoss,
+  isBossFloor,
+  isEraOpening,
+} from './eras';
 import { SIZE } from './grid';
 import { themeFor } from '../render/theme';
 import { SHIPPED } from './rules';
@@ -41,6 +49,23 @@ describe('eras and the floors that end them', () => {
     expect(isAfterBoss(4)).toBe(false);
     // Depth 1 is nobody's reward, however the arithmetic falls out.
     expect(isAfterBoss(1)).toBe(false);
+  });
+
+  /*
+   * The floor an era is NAMED on, and it is deliberately the same floor as the
+   * post-boss hand — which is why the title had to move onto that hand. Drawn on
+   * the board it was covered by the cards every single time.
+   */
+  it('opens an era on the floor after each boss', () => {
+    expect([1, 2, 4, 5, 8, 9, 12, 13].map(isEraOpening)).toEqual([
+      false, false, false, true, false, true, false, true,
+    ]);
+    // An opening is always also a post-boss hand; that is not a coincidence.
+    for (const d of [5, 9, 13]) expect(isAfterBoss(d)).toBe(isEraOpening(d));
+  });
+
+  it('numbers each era in the margin', () => {
+    expect([1, 4, 5, 8, 9].map(eraNumeral)).toEqual(['I', 'I', 'II', 'II', 'III']);
   });
 
   it('keeps every depth inside an era, past the end of the authored ones', () => {
@@ -184,32 +209,61 @@ describe('eras and the floors that end them', () => {
       expect(s.enemies[0].kind).toBe('carriageReturn');
     });
 
-    it('advances one row a turn and comes back one row wider', () => {
-      // A pass is SIZE turns; each completed pass adds a row to the band.
-      expect(bandAt(0)).toMatchObject({ top: 0, width: 1, rows: [0] });
-      expect(bandAt(3)).toMatchObject({ top: 3, width: 1, rows: [3] });
-      expect(bandAt(5)).toMatchObject({ top: 0, width: 2, rows: [0, 1] });
-      expect(bandAt(9)).toMatchObject({ top: 4, width: 2 });
-      // The page is a loop, so a band near the foot wraps rather than truncating.
-      expect(bandAt(9).rows).toEqual([4, 0]);
-      expect(bandAt(10).width).toBe(3);
+    it('travels one row every other turn, and turns around at the margins', () => {
+      const lanes = Array.from({ length: 18 }, (_, i) => pageAt(i).lane);
+      // Two turns to a row — the odd turns are the ones you get to spend.
+      expect(lanes.slice(0, 10)).toEqual([0, 0, 1, 1, 2, 2, 3, 3, 4, 4]);
+      // Then back up the page rather than wrapping: a carriage travels and
+      // returns, it does not teleport to the margin.
+      expect(lanes.slice(10, 18)).toEqual([3, 3, 2, 2, 1, 1, 0, 0]);
     });
 
-    it('runs out of page, which is what makes the fight end', () => {
-      // By the fifth pass there is nowhere on the board left to stand.
-      expect(bandAt(SIZE * 4).width).toBe(SIZE);
-      expect(bandAt(SIZE * 4).rows.slice().sort()).toEqual([0, 1, 2, 3, 4]);
-      // And it does not keep growing past the size of the page.
-      expect(bandAt(SIZE * 20).width).toBe(SIZE);
+    it('closes the shelter until only the machine is left', () => {
+      // Starts as the whole row: |x - bossX| <= 4 is every column.
+      expect(pageAt(0).shelter).toBe(SIZE - 1);
+      expect(pageAt(5).shelter).toBe(SIZE - 2);
+      expect(pageAt(15).shelter).toBe(1);
+      // A single square beside the machine, and then none at all.
+      expect(pageAt(20).shelter).toBe(0);
+      expect(pageAt(40).shelter).toBe(0);
     });
 
-    it('rings the bell on the turn it returns, and not once the page is gone', () => {
-      expect(ringsBell(0)).toBe(false); // the very first band is not a return
-      expect(ringsBell(SIZE)).toBe(true);
-      expect(ringsBell(SIZE + 1)).toBe(false);
-      expect(ringsBell(SIZE * 3)).toBe(true);
-      // Nothing left to widen into, so nothing to announce.
-      expect(ringsBell(SIZE * 5)).toBe(false);
+    /*
+     * The whole redesign, checked as a property: until the deadline there is
+     * ALWAYS somewhere to stand. A boss you cannot dodge is a stat check, and
+     * this one was played and reported as exactly that before this change.
+     */
+    it('always leaves somewhere to stand, right up to the deadline', () => {
+      const s = descendTo(ERA_FLOORS * 2);
+      const boss = s.enemies[0];
+      for (let t = 0; t < 20; t++) {
+        const { lane, shelter } = pageAt(t);
+        const safe: string[] = [];
+        for (let y = 0; y < SIZE; y++) {
+          for (let x = 0; x < SIZE; x++) {
+            if (x === boss.pos.x && y === boss.pos.y) continue;
+            if (y === lane && Math.abs(x - boss.pos.x) <= shelter) safe.push(`${x},${y}`);
+          }
+        }
+        expect({ t, safe: safe.length }).toMatchObject({ t });
+        expect(safe.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('rings the bell when the carriage reaches a margin and starts back', () => {
+      const rung = Array.from({ length: 24 }, (_, i) => i).filter(ringsBell);
+      expect(rung.length).toBeGreaterThan(0);
+      // Only ever at a margin, and only on the turn the travel reverses.
+      for (const at of rung) {
+        expect([0, SIZE - 1]).toContain(pageAt(at).lane);
+        expect(pageAt(at - 1).lane).not.toBe(pageAt(at).lane);
+      }
+    });
+
+    it('runs out of paper, which is what still makes the fight end', () => {
+      // Shelter zero: the only unstruck square is the one the boss stands on,
+      // and nobody can stand there.
+      expect(pageAt(25).shelter).toBe(0);
     });
 
     /*
@@ -218,7 +272,7 @@ describe('eras and the floors that end them', () => {
      * pause by hitting it is a boss you can stall forever, which is the exact
      * failure the drollery's two extra rules exist to patch.
      */
-    it('keeps turning the page even while it is being interrupted', () => {
+    it('keeps closing the page even while it is being interrupted', () => {
       let s = descendTo(ERA_FLOORS * 2);
       // Stood right next to it, so a stroke is available from the first turn —
       // the loop below is about the clock, not about pathfinding.
@@ -230,7 +284,7 @@ describe('eras and the floors that end them', () => {
       s = { ...s, player: { ...s.player, pos: beside, hp: 99, maxHp: 99, dmg: 1 } };
 
       const DIRS: Dir[] = ['left', 'right', 'up', 'down'];
-      const widthAtStart = bandAt(s.floorTurns).width;
+      const shelterAtStart = pageAt(s.floorTurns).shelter;
       let struck = 0;
 
       for (let i = 0; i < SIZE * 3 && s.screen === 'playing'; i++) {
@@ -253,7 +307,7 @@ describe('eras and the floors that end them', () => {
       }
 
       expect(struck).toBeGreaterThan(0); // it really was being interrupted
-      expect(bandAt(s.floorTurns).width).toBeGreaterThan(widthAtStart);
+      expect(pageAt(s.floorTurns).shelter).toBeLessThan(shelterAtStart);
     });
 
     it('ends on its own, against a player who only runs away', () => {

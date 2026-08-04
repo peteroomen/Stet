@@ -375,6 +375,30 @@ body {
 }
 
 /*
+ * The era's name, on the hand where you enter it.
+ *
+ * Larger and gilded where the page number would be, because arriving somewhere
+ * new is the one moment in a run worth announcing — and it is the only thing
+ * that teaches that eras exist at all.
+ */
+.cards__era {
+  margin: 0 0 0.15rem;
+  text-align: center;
+  font-size: 0.9rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.cards__eraNum {
+  display: block;
+  font-size: 1.9rem;
+  letter-spacing: 0.1em;
+  line-height: 1.1;
+  color: var(--leaf);
+}
+
+/*
  * A rare mark, gilded.
  *
  * Scarcity only does its work if it is VISIBLE — a card that turns up one hand

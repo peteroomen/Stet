@@ -241,30 +241,63 @@ export const ENEMY_ORDER: EnemyKind[] = [
 ];
 
 /**
- * The band of rows struck on a given floor-turn, and how wide it has grown.
+ * Where the page is safe, on a given floor-turn.
  *
- * Derived from the FLOOR CLOCK rather than from any state on the boss, so the
- * page advances whether or not the machine was interrupted — see the note on
- * `carriageReturn` for why that has to be true. It also means the band is a pure
- * function of the turn number, which is what makes the fight's length something
- * that can be reasoned about rather than measured.
+ * THE CARRIAGE RETURN strikes everything EXCEPT a shelter, and the shelter is
+ * two things at once: a travelling lane, and a stretch of that lane near the
+ * machine itself.
  *
- * One pass is SIZE turns. Each completed pass adds a row to the band, so pass
- * five covers the whole page and there is nowhere left to stand.
+ * ## Why it is a shelter and not a band
+ *
+ * The first version was the other way round — a band of struck rows that grew
+ * until it covered the page — and it was played and reported as "only ok since
+ * it's just a damage race", which was exactly right. Once the band covers
+ * everything there is no dodge, so the only strategy left is to have out-damaged
+ * it, and a fight with one strategy is a stat check.
+ *
+ * Stated as a SHELTER instead, every turn has a dodge in it until the very last
+ * one, and the fight becomes what a boss ought to be: a thing you can beat
+ * without being hit at all, if you read it well enough.
+ *
+ * ## The two clocks
+ *
+ * The LANE travels down the page and back up again, one row every two turns,
+ * ringing the bell each time it turns around. Every other turn it does not move,
+ * and that is your free turn — the one you spend striking instead of following.
+ *
+ * The SHELTER is how much of that lane is actually safe, measured out from the
+ * machine's own column, and it closes by one every five turns. It starts as the
+ * whole row and ends as a single square beside the machine. So the safe ground
+ * converges ON the boss: late in the fight the only place to stand is within
+ * reach of it, which is where you wanted to be anyway.
+ *
+ * ## It still ends
+ *
+ * Shelter reaches zero at turn twenty-five, and from then the only unstruck
+ * square is the one the boss is standing on — which nobody can stand on. So the
+ * deadline survives the redesign intact: a player who has not killed it by then
+ * takes a blow every turn until they are gone, and the fight terminates by
+ * arithmetic exactly as before. What changed is that the twenty-five turns
+ * before it are now playable.
  */
-export function bandAt(floorTurns: number): { rows: number[]; width: number; top: number } {
+export function pageAt(floorTurns: number): { lane: number; shelter: number; turning: boolean } {
   const t = Math.max(0, floorTurns);
-  const top = t % SIZE;
-  const width = Math.min(SIZE, 1 + Math.floor(t / SIZE));
-  // Wraps, so a band is always exactly `width` rows however near the foot of the
-  // page it starts — the paper is a loop, not a cliff.
-  const rows = Array.from({ length: width }, (_, i) => (top + i) % SIZE);
-  return { rows, width, top };
+  // One row every other turn: the odd turns are the free ones.
+  const steps = Math.floor(t / 2);
+  const period = 2 * (SIZE - 1);
+  const p = steps % period;
+  const lane = p < SIZE ? p : period - p;
+  return {
+    lane,
+    shelter: Math.max(0, SIZE - 1 - Math.floor(t / 5)),
+    // The carriage has reached a margin and is about to travel back.
+    turning: (lane === 0 || lane === SIZE - 1) && t % 2 === 0,
+  };
 }
 
-/** True on the turn the band has just run off the page and come back. */
+/** True on the turn the carriage reaches a margin and starts back. */
 export const ringsBell = (floorTurns: number): boolean =>
-  floorTurns > 0 && floorTurns % SIZE === 0 && bandAt(floorTurns).width < SIZE;
+  floorTurns > 0 && pageAt(floorTurns).turning && pageAt(floorTurns - 1).lane !== pageAt(floorTurns).lane;
 
 /**
  * Does this kind alternate STEPPING and STRIKING, rather than winding and acting?
@@ -388,20 +421,26 @@ function chargerPlan(e: Enemy, s: GameState, _rng: Rng): Intent {
 }
 
 /**
- * THE CARRIAGE RETURN: a band of whole rows, struck where the page has reached.
+ * THE CARRIAGE RETURN: everything except the shelter.
  *
- * Its own tile is excluded like every other sweep — the machine is what strikes,
- * not what is struck. That is bookkeeping and NOT shelter: the excluded square is
- * the one the boss is standing on, so nobody can stand there. Once the band
- * covers the whole page there is nowhere at all, which is the point. The last
- * pass is not survivable; it is the deadline.
+ * Stated as the complement of `pageAt` — what is SAFE is the small thing and
+ * what is struck is the rest, which is the whole point of the redesign and is
+ * also how it reads on the board: a page almost entirely red, with one short
+ * stretch of clear paper beside the machine.
+ *
+ * Its own tile is excluded like every other sweep, because the machine is what
+ * strikes and not what is struck. That is bookkeeping, not mercy: nobody can
+ * stand there.
  */
 function carriageReturnPlan(e: Enemy, s: GameState): Intent {
-  const { rows } = bandAt(s.floorTurns);
+  const { lane, shelter } = pageAt(s.floorTurns);
   const tiles: Vec[] = [];
-  for (const y of rows) {
+  for (let y = 0; y < SIZE; y++) {
     for (let x = 0; x < SIZE; x++) {
       if (x === e.pos.x && y === e.pos.y) continue;
+      // Safe: in the travelling lane, and within the shelter of the machine's
+      // own column. Everything else takes the blow.
+      if (y === lane && Math.abs(x - e.pos.x) <= shelter) continue;
       tiles.push({ x, y });
     }
   }

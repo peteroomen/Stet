@@ -64,8 +64,18 @@ export interface EraPalette {
  * belongs to an illuminator, and the blue a machine of this period puts on paper
  * is duplicating ink. Same rule, right chemistry.
  *
- * The gilding goes to steel. Gold leaf on a typed page would be a costume; the
- * frame is the machine's own metal.
+ * The gilding goes to BRASS, and the embellishment changes shape with it.
+ *
+ * Steel was tried first and reported as not popping and not beautiful next to
+ * era I's gold, which is a chroma problem: grey has almost none, so it reads as
+ * absence rather than as material. Brass keeps the warmth that made the gold
+ * work and is exactly what a machine of this period had its fittings made of.
+ *
+ * But colour alone would have made it read as DIM GOLD, which is worse than
+ * either. So the margin is drawn differently too — see `typeset` in the
+ * renderer: a fine pinstripe pair and turned screw-heads at the corners, in
+ * place of era I's vine and volutes. Same material family, an entirely
+ * different hand.
  */
 export const TYPEWRITER: EraPalette = {
   day: {
@@ -77,11 +87,11 @@ export const TYPEWRITER: EraPalette = {
     inkSoft: '#585C63',
     blood: '#B0242F',
     danger: '#B0242F',
-    gold: '#8A8578',
+    gold: '#9A7434',
     ghost: '#8E8E85',
     hero: '#2A4A9E',
-    leaf: '#9A978C',
-    leafDeep: '#5E5C55',
+    leaf: '#B98D4A',
+    leafDeep: '#6B5327',
   },
   night: {
     paper: '#121315',
@@ -92,11 +102,11 @@ export const TYPEWRITER: EraPalette = {
     inkSoft: '#94958E',
     blood: '#DA5147',
     danger: '#DA5147',
-    gold: '#B0AB9A',
+    gold: '#C9A263',
     ghost: '#67675F',
     hero: '#7FA6EA',
-    leaf: '#B8B4A6',
-    leafDeep: '#55534C',
+    leaf: '#CFA35D',
+    leafDeep: '#6A5024',
   },
 };
 

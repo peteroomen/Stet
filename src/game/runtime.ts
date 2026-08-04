@@ -625,6 +625,7 @@ export class Runtime {
         if (eraAt(ev.depth).id !== this.chromeEra) this.syncChrome();
         this.effects.clearStains();
         fx.addFlash(0.16, t.paper);
+
         break;
       }
 
