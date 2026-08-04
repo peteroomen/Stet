@@ -266,9 +266,21 @@ export const TRAIT_BY_ID = new Map([...TRAITS, MEND].map((t) => [t.id, t]));
  *
  * Rolled once for the whole hand rather than per card, so a rare arrives as an
  * event — "there is something good in this one" — instead of as a slot that
- * sometimes upgrades. Roughly one hand in four.
+ * sometimes upgrades.
+ *
+ * Halved from 0.24 after play: "I see them all the time at the moment". The
+ * roll was only ever half the story, though — see `offerTraits`, where the boss
+ * guarantee turned out to be the larger source. Measured over 120 3-ply runs at
+ * 0.24, of 1,648 hands dealt:
+ *
+ *   all hands     30% showed a rare
+ *   boss hands    81%   <- the guarantee, and a quarter of all hands
+ *   plain hands   13%   <- the roll, already under its nominal rate because
+ *                          rares are `once` and leave the pool once taken
+ *
+ * So this constant alone could not have delivered what was asked for.
  */
-export const RARE_CHANCE = 0.24;
+export const RARE_CHANCE = 0.12;
 
 /**
  * The three cards offered on a descent.
@@ -277,10 +289,17 @@ export const RARE_CHANCE = 0.24;
  * is not a choice, it is a number going up. Traits already taken that cannot be
  * taken twice are dropped from the pool.
  *
- * `atBoss` makes the hand you are dealt on ARRIVING at a boss floor always carry
- * a rare. That is the whole compensation for making them scarce: the spike lands
- * where the game asks the most of you instead of wherever the dice fell, and it
- * means a boss is never lost to a run that simply never saw one.
+ * `atBoss` makes the hand you are dealt on ARRIVING at a boss floor carry a rare
+ * — but ONLY while the run does not already hold one.
+ *
+ * That condition is the whole point of the promise, and it was missing. What the
+ * guarantee is for is "a boss is never lost to a run that simply never saw a
+ * rare"; a run that already has one has not got that problem, so handing it
+ * another is not keeping a promise, it is just a bigger pile. And it was the
+ * bigger of the two sources: 81% of boss hands carried a rare, against 13% of
+ * ordinary ones, on a quarter of all hands dealt.
+ *
+ * Conditioning it costs the promise nothing and is most of the reduction.
  */
 export function offerTraits(
   taken: string[],
@@ -296,9 +315,13 @@ export function offerTraits(
 
   const live = TRAITS.filter((t) => !(t.once && taken.includes(t.id)));
   const rares = live.filter((t) => t.rare);
+  // Already carrying one? Then the boss's promise is already kept, and this hand
+  // takes its chances like any other.
+  const hasRare = taken.some((id) => TRAIT_BY_ID.get(id)?.rare);
+  const promise = atBoss && !hasRare;
   // One roll for the hand, using the same `pick` the rest of the deal uses so a
   // seeded run stays reproducible.
-  const allowRare = atBoss || pick(1000) < RARE_CHANCE * 1000;
+  const allowRare = promise || pick(1000) < RARE_CHANCE * 1000;
   const pool = allowRare ? live : live.filter((t) => !t.rare);
   const out: Trait[] = [];
   const axes = new Set<TraitAxis>();
@@ -313,7 +336,7 @@ export function offerTraits(
 
   // The boss's promise is kept first, before the axis-spreading has a chance to
   // fill the hand with commons.
-  if (atBoss && rares.length > 0 && out.length < count) {
+  if (promise && rares.length > 0 && out.length < count) {
     const t = rares[pick(rares.length)];
     out.push(t);
     axes.add(t.axis);

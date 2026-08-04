@@ -45,10 +45,39 @@ describe('rare marginalia', () => {
     expect(rate).toBeLessThan(RARE_CHANCE * 1.8);
   });
 
-  it('always puts one in the hand dealt at a boss', () => {
+  it('always puts one in the hand dealt at a boss, while you have none', () => {
     for (let i = 0; i < 200; i++) {
       expect(deal({ atBoss: true, seed: i }).some((t) => t.rare)).toBe(true);
     }
+  });
+
+  /*
+   * The condition the promise was missing.
+   *
+   * What the guarantee is FOR is "a boss is never lost to a run that simply
+   * never saw a rare". A run already holding one does not have that problem, so
+   * handing it another is not keeping a promise — it is just a bigger pile. And
+   * it was the larger of the two sources by a distance: measured over 120 3-ply
+   * runs, 81% of boss hands carried a rare against 13% of ordinary ones, on a
+   * quarter of all hands dealt.
+   */
+  it('stops guaranteeing one once the run already holds a rare', () => {
+    const held = [rares[0].id];
+    let withRare = 0;
+    const TRIALS = 400;
+    for (let i = 0; i < TRIALS; i++) {
+      if (deal({ atBoss: true, seed: i, taken: held }).some((t) => t.rare)) withRare++;
+    }
+    // Back to taking its chances like any other hand, so well under half.
+    expect(withRare / TRIALS).toBeLessThan(0.4);
+    // But still possible — the roll is halved, not switched off.
+    expect(withRare).toBeGreaterThan(0);
+  });
+
+  it('is half what it was', () => {
+    // Reported from play as "I see them all the time". The roll is the half of
+    // the problem this constant owns; the boss promise is the other half.
+    expect(RARE_CHANCE).toBeCloseTo(0.12, 5);
   });
 
   /*
