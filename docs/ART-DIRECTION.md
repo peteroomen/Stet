@@ -14,8 +14,8 @@ Not "make a pretty city". At 390 px wide, a 10×10 board gives each cell about
 
 1. **which zone** — three-way, instantly
 2. **which density** — three-way, and it must survive colourblindness
-3. **whether a road runs through it**, and which way
-4. **whether it's blight, water, or a special**
+3. **whether a road runs through it**
+4. **whether it's blight or a park**
 
 Plus the payoff: the skyline strip has to feel like an actual city, because that
 is the thing the whole game is producing.
@@ -42,6 +42,13 @@ both things instead of compromising on one.
   not colour alone.
 - **No text, no labels, no UI chrome, no watermark, no logo.** Image models garble
   small type and you'll only have to mask it out.
+- **Roads carry no direction.** No lane markings, no centre lines, no arrows,
+  no curved markings joining the arms of a bend. In the rules a road conducts
+  independently along its own row and column and **rays do not turn corners**, so
+  any marking implying flow around a bend is drawing a rule the game doesn't
+  have. Plain paving.
+- **No water.** Cut from the design — it permanently disabled the row and column
+  it sat in.
 - **Flat, even lighting on the board.** A dramatic sun looks great in a hero image
   and makes cells at the dark end of the board unreadable in the actual game.
 
@@ -81,9 +88,9 @@ facade. Three kinds of district in flat, distinct colours: leafy green
 low-rise houses, deep blue commercial storefronts and towers, amber-brown
 industrial sheds and warehouses. Buildings come in three clear heights —
 single houses, mid-rise blocks, and tall towers — with the taller ones darker
-and casting short dithered pixel shadows down and to the right. Narrow grey
-asphalt roads with dashed white centre lines run between some lots in straight
-runs. A few lots are empty dirt, one or two are pale blue water. Limited
+and casting short dithered pixel shadows down and to the right. Narrow plain
+grey asphalt roads with no markings of any kind run between some lots in
+straight runs. A few lots are empty dirt, one is a small green park with trees. Limited
 palette of about 24 colours, hard pixel edges, no anti-aliasing, no gradients.
 Even flat daylight. No text, no labels, no UI, no watermark.
 ```
@@ -103,9 +110,8 @@ row 2 — a small blue shop; a blue mid-rise office, darker; a tall dark blue
 commercial tower.
 row 3 — a small amber workshop; an amber factory with a chimney, darker; a
 large dark amber industrial plant with two chimneys.
-row 4 — an empty dirt lot; a straight grey asphalt road running top to bottom
-with a dashed white centre line; a pale blue water tile with a subtle ripple
-pattern.
+row 4 — an empty dirt lot; a plain grey asphalt road tile running top to
+bottom with no markings; a small green park with two round trees and a bench.
 
 Each tile fills its square completely and is centred. No text, no labels, no
 numbers, no borders around tiles, no watermark.
@@ -140,10 +146,10 @@ fresh green houses with pitched roofs, deep blue shops and offices with flat
 roofs, warm amber factories with rounded chimneys and vents. Three clear
 heights — one block tall, two blocks tall, three blocks tall — with taller
 buildings in a deeper shade of the same colour, each casting one soft flat
-shadow in the same direction. Smooth grey roads with crisp white dashed lines
-run in straight runs between lots. Thick consistent dark outlines on
+shadow in the same direction. Smooth plain grey roads with no lane markings run in
+straight runs between lots. Thick consistent dark outlines on
 everything, flat fills, no gradients, no texture, no noise. A couple of small
-green park squares with round trees, one or two pale blue water tiles. Bright
+green park squares with round trees and a bench. Bright
 even lighting, cheerful and clean. No text, no labels, no UI, no watermark.
 ```
 
@@ -163,9 +169,9 @@ row 2 — one small blue shop with an awning; a blue two-block office, deeper
 blue; a blue three-block tower, deepest blue.
 row 3 — one small amber workshop; an amber two-block factory with a chimney,
 deeper amber; an amber three-block plant with two chimneys, deepest amber.
-row 4 — an empty pale lot with faint grid markings; a straight grey road
-running top to bottom with white dashes; a pale blue water tile with two
-simple wave lines.
+row 4 — an empty pale lot with faint grid markings; a plain grey road tile
+running top to bottom with no markings; a small green park with two round
+trees and a bench.
 
 Each tile fills its square and is centred. No text, no labels, no numbers, no
 borders, no watermark.
@@ -173,13 +179,13 @@ borders, no watermark.
 
 ---
 
-## Direction C — "Massing model" *(mine)*
+## Direction C — "Massing model" — **SELECTED**
 
 **The board is a physical architectural model.** Chipboard, basswood and painted
 card blocks on a drafting table, lit by a low raking light, photographed from
 directly above. Zones are painted in flat colour on the block faces. **Density
 reads entirely through height and the length of the shadow it throws.** Roads are
-crisp white tape. Water is a piece of frosted acrylic.
+crisp white tape, unmarked.
 
 And then the skyline strip above the board is the opposite: a **painted
 elevation panorama**, detailed and warm — the one place with real buildings,
@@ -219,8 +225,9 @@ in three flat matte colours by district — sage green, deep slate blue, and
 warm ochre amber — with taller blocks in deeper saturations of the same
 colours. A low raking light from the upper left throws long soft grey shadows
 across the base, so the taller blocks are unmistakable by shadow length alone.
-Narrow strips of crisp white tape mark the roads in straight runs between
-blocks. One or two lots are frosted acrylic standing in for water. Visible
+Narrow strips of plain white tape mark the roads in straight runs between
+blocks, with no lines or markings on them. One lot is a small patch of model-railway grass with lichen trees.
+Visible
 material texture — card grain, cut edges, a faint pencil grid ruled on the
 base. Muted, sophisticated, tactile. Shallow depth of field is not wanted:
 everything sharp, flat on, top-down. No text, no labels, no people, no cars,
@@ -262,8 +269,8 @@ dark slate blue block.
 row 3 — one low ochre amber block; a medium amber block, deeper; a tall dark
 amber block with a small cylinder chimney.
 row 4 — a bare chipboard lot with a faint ruled pencil grid; a strip of crisp
-white tape running top to bottom on chipboard; a square of frosted pale blue
-acrylic.
+plain white tape running top to bottom on chipboard, unmarked; a square of
+model-railway grass with two small lichen trees.
 
 Each tile fills its square and is centred. Consistent lighting direction
 across all tiles. No text, no labels, no numbers, no borders, no watermark.
@@ -271,7 +278,7 @@ across all tiles. No text, no labels, no numbers, no borders, no watermark.
 
 ---
 
-## Specials sheet — run this once, in whichever style you pick
+## Terrain, roads and the park — run this once, in the chosen style
 
 Replace `{STYLE}` with the style sentence from the direction you chose (the first
 two lines of its tile-sheet prompt).
@@ -281,13 +288,12 @@ A clean asset sheet of 6 square game tiles arranged in a strict 3 wide by 2
 tall grid, evenly spaced on a plain neutral background. {STYLE}
 
 Reading left to right, top to bottom:
-row 1 — a small public park: grass, a few round trees, a path; a bus and tram
-stop with a small shelter and a sign post; a patch of grey rubble and derelict
-ground, cracked and weedy, clearly abandoned.
-row 2 — a sports stadium with an oval roof, seen from above, filling the
-tile; a power station with two large cooling towers and a chimney, seen from
-above, filling the tile; a crossroads where two grey roads meet at right
-angles.
+row 1 — a small public park: grass, a few round trees, a path; a patch of grey
+rubble and derelict ground, cracked and weedy, clearly abandoned; an empty
+buildable lot, flat and bare.
+row 2 — a plain grey road tile running top to bottom, unmarked; a plain grey
+road tile running left to right, unmarked; a plain grey crossroads tile where
+two unmarked roads meet at right angles.
 
 Each tile fills its square and is centred. No text, no labels, no numbers, no
 borders, no watermark.
